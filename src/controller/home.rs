@@ -14,6 +14,7 @@ pub struct HomeController {
     pub half_life_hours: f64,
     pub todays_drinks: Vec<(String, String)>,
     pub caffeine_series: Vec<(String, f64)>,
+    pub sleep_time: Option<String>,
 }
 
 impl HomeController {
@@ -23,6 +24,7 @@ impl HomeController {
         let today_total_caffeine = repo.get_today_total_caffeine()?;
         let todays_drinks = Self::load_todays_drinks()?;
         let caffeine_series = Self::load_caffeine_series()?;
+        let sleep_time = Self::load_sleep_time()?;
 
         Ok(Self {
             current_caffeine_level,
@@ -30,6 +32,7 @@ impl HomeController {
             half_life_hours: crate::repository::duckdb::CAFFEINE_HALF_LIFE_HOURS,
             todays_drinks,
             caffeine_series,
+            sleep_time,
         })
     }
 
@@ -78,6 +81,31 @@ impl HomeController {
         Ok(formatted)
     }
 
+    fn load_sleep_time() -> DuckResult<Option<String>> {
+        let db = DbConnection::open("cuppa.db")?;
+        let repo = DrinkRepository::new(db)?;
+        match repo.time_until_threshold(50.0)? {
+            Some(dt) => {
+                let local = dt.with_timezone(&Local);
+                let now = Local::now();
+                let today = now.date_naive();
+                let dt_date = local.date_naive();
+                
+                let time_str = local.format("%H:%M").to_string();
+                let date_str = if dt_date == today {
+                    "today".to_string()
+                } else if dt_date == today.succ_opt().unwrap_or(today) {
+                    "tomorrow".to_string()
+                } else {
+                    local.format("%a %d %b").to_string()
+                };
+                
+                Ok(Some(format!("{} at {}", date_str, time_str)))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub fn refresh(&mut self) -> DuckResult<()> {
         let db = DbConnection::open("cuppa.db")?;
         let repo = DrinkRepository::new(db)?;
@@ -85,6 +113,7 @@ impl HomeController {
         self.today_total_caffeine = repo.get_today_total_caffeine()?;
         self.todays_drinks = Self::load_todays_drinks()?;
         self.caffeine_series = Self::load_caffeine_series()?;
+        self.sleep_time = Self::load_sleep_time()?;
         Ok(())
     }
 }

@@ -156,6 +156,34 @@ impl DrinkRepository {
         Ok(Self::calculate_level_at(&drinks, now))
     }
 
+    /// Find the first time in the future when caffeine level drops to 50mg or below.
+    /// Returns None if already below 50mg or if it won't drop within 72 hours.
+    pub fn time_until_threshold(&self, threshold: f64) -> duckdb::Result<Option<DateTime<Utc>>> {
+        let now = Utc::now();
+        let current = self.current_caffeine_level()?;
+
+        if current <= threshold {
+            return Ok(None);
+        }
+
+        let cutoff = now - Duration::hours(72);
+        let drinks = self.get_drinks_since(cutoff)?;
+
+        // Search forward in 15-minute increments up to 72 hours
+        let mut t = now + Duration::minutes(15);
+        let end = now + Duration::hours(72);
+
+        while t <= end {
+            let level = Self::calculate_level_at(&drinks, t);
+            if level <= threshold {
+                return Ok(Some(t));
+            }
+            t += Duration::minutes(15);
+        }
+
+        Ok(None)
+    }
+
     pub fn get_drinks_since(&self, since: DateTime<Utc>) -> duckdb::Result<Vec<DrinkRecord>> {
         let mut stmt = self.db.prepare(
             "SELECT id, drink_name, caffeine_mg, consumed_at FROM drinks WHERE consumed_at >= ? ORDER BY consumed_at DESC"

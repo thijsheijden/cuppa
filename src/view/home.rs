@@ -40,7 +40,30 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
         ])
         .split(bottom);
 
-    let stats_widget = Paragraph::new("")
+    let daily_max = 400;
+    let daily_pct = (controller.today_total_caffeine as f64 / daily_max as f64 * 100.0).min(100.0) as u32;
+
+    let current_line = Line::from(vec![
+        Span::styled("Current: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+        Span::raw(format!("{:.1} mg", controller.current_caffeine_level)),
+    ]);
+    let today_line = Line::from(vec![
+        Span::styled("Today: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+        Span::raw(format!("{} mg ({}% of 400mg)", controller.today_total_caffeine, daily_pct)),
+    ]);
+    let sleep_line = match &controller.sleep_time {
+        Some(time) => Line::from(vec![
+            Span::styled("Sleep ready: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+            Span::raw(time.clone()),
+        ]),
+        None => Line::from(vec![
+            Span::styled("Sleep ready: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+            Span::raw("now"),
+        ]),
+    };
+
+    let stats_text = ratatui::text::Text::from(vec![current_line, today_line, sleep_line]);
+    let stats_widget = Paragraph::new(stats_text)
         .block(Block::default().borders(Borders::ALL).title("Statistics"));
     frame.render_widget(stats_widget, bottom_layout[0]);
 
@@ -55,8 +78,9 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
         })
         .collect();
 
+    let recent_title = "Today's Drinks";
     let recent_table = Table::new(recent_rows, [Constraint::Length(8), Constraint::Min(0)])
-        .block(Block::default().borders(Borders::ALL).title("Today's Drinks"))
+        .block(Block::default().borders(Borders::ALL).title(recent_title))
         .header(
             Row::new(vec!["Time", "Drink"])
                 .style(Style::default().add_modifier(ratatui::style::Modifier::BOLD)),

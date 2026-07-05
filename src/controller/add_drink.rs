@@ -182,6 +182,17 @@ impl Screen for AddDrinkScreen {
             .highlight_style(Style::default().bg(Color::Blue).fg(Color::White))
             .highlight_symbol("> ");
         frame.render_stateful_widget(list_widget, layout[1], &mut self.list_state.clone());
+
+        // Footer hint
+        let footer_area = ratatui::layout::Rect::new(
+            inner.x,
+            inner.y + inner.height.saturating_sub(1),
+            inner.width,
+            1,
+        );
+        let footer = Paragraph::new("</> Search  <a> Add Custom  <Enter> Log  <Esc> Cancel")
+            .style(Style::default().fg(Color::DarkGray));
+        frame.render_widget(footer, footer_area);
     }
 
     fn handle_input(&mut self, key: KeyEvent) -> AppAction {
@@ -224,6 +235,11 @@ impl Screen for AddDrinkScreen {
             KeyCode::Enter => {
                 let result = self.log_selected_drink();
                 return self.handle_log_result(result);
+            }
+            KeyCode::Char('a') => {
+                let custom_screen = crate::controller::add_custom_drink::AddCustomDrinkScreen::new();
+                let popover = PopoverScreen::new(Box::new(custom_screen), 50, 14);
+                return AppAction::PushScreen(Box::new(popover));
             }
             KeyCode::Esc => {
                 return AppAction::PopScreen;

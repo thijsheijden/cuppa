@@ -1,3 +1,4 @@
+pub mod add_custom_drink;
 pub mod add_drink;
 pub mod app;
 pub mod drink_log;

@@ -140,8 +140,13 @@ impl Screen for HomeController {
                 AppAction::Continue
             }
             ratatui::crossterm::event::KeyCode::Char('l') => {
-                // TODO: Open log view
-                AppAction::Continue
+                match crate::controller::drink_log::DrinkLogScreen::new() {
+                    Ok(log_screen) => {
+                        let popover = crate::controller::popover::PopoverScreen::new(Box::new(log_screen), 60, 18);
+                        AppAction::PushScreen(Box::new(popover))
+                    }
+                    Err(_) => AppAction::Continue,
+                }
             }
             _ => AppAction::Continue,
         }

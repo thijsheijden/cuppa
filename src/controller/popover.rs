@@ -30,7 +30,10 @@ impl Screen for PopoverScreen {
         // Fill entire terminal with opaque background
         for y in area.top()..area.bottom() {
             for x in area.left()..area.right() {
-                frame.buffer_mut()[(x, y)].set_bg(Color::Black);
+                let cell = frame.buffer_mut().get_mut(x, y);
+                cell.set_symbol(" ");
+                cell.set_fg(Color::Black);
+                cell.set_bg(Color::Black);
             }
         }
 

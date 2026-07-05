@@ -184,6 +184,33 @@ impl DrinkRepository {
         Ok(None)
     }
 
+    pub fn get_drinks_paginated(&self, offset: usize, limit: usize) -> duckdb::Result<Vec<DrinkRecord>> {
+        let mut stmt = self.db.prepare(
+            "SELECT id, drink_name, caffeine_mg, consumed_at FROM drinks ORDER BY consumed_at DESC LIMIT ? OFFSET ?"
+        )?;
+        let rows = stmt.query_map(
+            &[&limit as &dyn duckdb::ToSql, &(offset as i64) as &dyn duckdb::ToSql],
+            |row| {
+                let consumed_at_str: String = row.get(3)?;
+                let consumed_at = parse_duckdb_timestamp(&consumed_at_str)
+                    .unwrap_or_else(|_| Utc::now());
+
+                Ok(DrinkRecord {
+                    id: Some(row.get(0)?),
+                    drink_name: row.get(1)?,
+                    caffeine_mg: row.get(2)?,
+                    consumed_at,
+                })
+            }
+        )?;
+
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row?);
+        }
+        Ok(records)
+    }
+
     pub fn get_drinks_since(&self, since: DateTime<Utc>) -> duckdb::Result<Vec<DrinkRecord>> {
         let mut stmt = self.db.prepare(
             "SELECT id, drink_name, caffeine_mg, consumed_at FROM drinks WHERE consumed_at >= ? ORDER BY consumed_at DESC"

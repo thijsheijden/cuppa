@@ -2,6 +2,30 @@ use chrono::{DateTime, Utc, Duration};
 
 use crate::repository::{connection::DbConnection, DrinkRecord};
 
+pub struct DrinkFilter {
+    pub limit: Option<usize>,
+    pub since: Option<DateTime<Utc>>,
+}
+
+impl DrinkFilter {
+    pub fn new() -> Self {
+        Self {
+            limit: None,
+            since: None,
+        }
+    }
+
+    pub fn with_limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn with_since(mut self, since: DateTime<Utc>) -> Self {
+        self.since = Some(since);
+        self
+    }
+}
+
 pub struct DrinkRepository {
     db: DbConnection,
 }
@@ -41,11 +65,21 @@ impl DrinkRepository {
         Ok(())
     }
 
-    pub fn get_all_drinks(&self) -> duckdb::Result<Vec<DrinkRecord>> {
-        let mut stmt = self.db.prepare(
-            "SELECT id, drink_name, caffeine_mg, consumed_at FROM drinks ORDER BY consumed_at DESC"
-        )?;
-        let rows = stmt.query_map([], |row| {
+    pub fn get_all_drinks(&self, filter: Option<&DrinkFilter>) -> duckdb::Result<Vec<DrinkRecord>> {
+        let mut sql = "SELECT id, drink_name, caffeine_mg, consumed_at FROM drinks".to_string();
+        let mut param_values: Vec<String> = Vec::new();
+
+        if let Some(filter) = filter {
+            if let Some(since) = filter.since {
+                sql.push_str(" WHERE consumed_at >= ?");
+                param_values.push(since.to_rfc3339());
+            }
+        }
+
+        sql.push_str(" ORDER BY consumed_at DESC");
+
+        let mut stmt = self.db.prepare(&sql)?;
+        let row_mapper = |row: &duckdb::Row<'_>| {
             let consumed_at_str: String = row.get(3)?;
             let consumed_at = DateTime::parse_from_rfc3339(&consumed_at_str)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -57,12 +91,29 @@ impl DrinkRepository {
                 caffeine_mg: row.get(2)?,
                 consumed_at,
             })
-        })?;
+        };
+
+        let rows = if param_values.is_empty() {
+            stmt.query_map([], row_mapper)?
+        } else {
+            let params: Vec<&dyn duckdb::ToSql> = param_values
+                .iter()
+                .map(|s| s as &dyn duckdb::ToSql)
+                .collect();
+            stmt.query_map(&*params, row_mapper)?
+        };
 
         let mut records = Vec::new();
         for row in rows {
             records.push(row?);
         }
+
+        if let Some(filter) = filter {
+            if let Some(limit) = filter.limit {
+                records.truncate(limit);
+            }
+        }
+
         Ok(records)
     }
 

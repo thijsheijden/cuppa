@@ -37,6 +37,10 @@ impl AppController {
                             if self.screen_stack.len() > 1 {
                                 self.screen_stack.pop();
                             }
+                            // Refresh home screen data after closing a popup
+                            if let Some(screen) = self.screen_stack.last_mut() {
+                                let _ = screen.handle_input(KeyCode::F(5));
+                            }
                         }
                     }
                 }

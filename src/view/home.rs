@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
     Frame,
 };
 
@@ -45,9 +45,24 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
         .block(Block::default().borders(Borders::ALL).title("Statistics"));
     frame.render_widget(stats_widget, bottom_layout[0]);
 
-    let recent_widget = Paragraph::new("")
-        .block(Block::default().borders(Borders::ALL).title("Recent Drinks"));
-    frame.render_widget(recent_widget, bottom_layout[1]);
+    let recent_rows: Vec<Row> = controller
+        .todays_drinks
+        .iter()
+        .map(|(time, name)| {
+            Row::new(vec![
+                Cell::from(time.clone()).style(Style::default().fg(Color::DarkGray)),
+                Cell::from(name.clone()),
+            ])
+        })
+        .collect();
+
+    let recent_table = Table::new(recent_rows, [Constraint::Length(8), Constraint::Min(0)])
+        .block(Block::default().borders(Borders::ALL).title("Today's Drinks"))
+        .header(
+            Row::new(vec!["Time", "Drink"])
+                .style(Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+        );
+    frame.render_widget(recent_table, bottom_layout[1]);
 
     let footer_text = Line::from(vec![
         Span::styled("<q>", Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)),

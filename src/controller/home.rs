@@ -13,6 +13,7 @@ pub struct HomeController {
     pub today_total_caffeine: i32,
     pub half_life_hours: f64,
     pub todays_drinks: Vec<(String, String)>,
+    pub caffeine_series: Vec<(String, f64)>,
 }
 
 impl HomeController {
@@ -21,12 +22,14 @@ impl HomeController {
         let current_caffeine_level = repo.current_caffeine_level()?;
         let today_total_caffeine = repo.get_today_total_caffeine()?;
         let todays_drinks = Self::load_todays_drinks()?;
+        let caffeine_series = Self::load_caffeine_series()?;
 
         Ok(Self {
             current_caffeine_level,
             today_total_caffeine,
             half_life_hours: crate::repository::duckdb::CAFFEINE_HALF_LIFE_HOURS,
             todays_drinks,
+            caffeine_series,
         })
     }
 
@@ -59,12 +62,29 @@ impl HomeController {
         Ok(recent)
     }
 
+    fn load_caffeine_series() -> DuckResult<Vec<(String, f64)>> {
+        let db = DbConnection::open("cuppa.db")?;
+        let repo = DrinkRepository::new(db)?;
+        let series = repo.generate_caffeine_series()?;
+
+        let formatted = series
+            .into_iter()
+            .map(|(dt, level)| {
+                let time = dt.with_timezone(&Local).format("%H:%M").to_string();
+                (time, level)
+            })
+            .collect();
+
+        Ok(formatted)
+    }
+
     pub fn refresh(&mut self) -> DuckResult<()> {
         let db = DbConnection::open("cuppa.db")?;
         let repo = DrinkRepository::new(db)?;
         self.current_caffeine_level = repo.current_caffeine_level()?;
         self.today_total_caffeine = repo.get_today_total_caffeine()?;
         self.todays_drinks = Self::load_todays_drinks()?;
+        self.caffeine_series = Self::load_caffeine_series()?;
         Ok(())
     }
 }

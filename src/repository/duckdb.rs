@@ -130,6 +130,26 @@ impl DrinkRepository {
         self.db.execute("DELETE FROM drinks WHERE id = ?", &[&id as &dyn duckdb::ToSql])
     }
 
+    pub fn generate_caffeine_series(&self) -> duckdb::Result<Vec<(DateTime<Utc>, f64)>> {
+        let now = Utc::now();
+        let cutoff = now - Duration::hours(72);
+        let drinks = self.get_drinks_since(cutoff)?;
+
+        let today_start = now.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let tomorrow_start = today_start + Duration::days(1);
+
+        let mut points = Vec::new();
+        let mut t = today_start;
+
+        while t <= tomorrow_start {
+            let level = Self::calculate_level_at(&drinks, t);
+            points.push((t, level));
+            t += Duration::minutes(15);
+        }
+
+        Ok(points)
+    }
+
     pub fn current_caffeine_level(&self) -> duckdb::Result<f64> {
         let now = Utc::now();
         let cutoff = now - Duration::hours(72);

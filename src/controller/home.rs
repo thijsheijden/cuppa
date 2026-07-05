@@ -1,7 +1,9 @@
 use duckdb::Result as DuckResult;
 
+use crate::controller::add_drink::AddDrinkScreen;
+use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
-use crate::view::home;
+use crate::repository::connection::DbConnection;
 
 pub struct HomeController {
     pub current_caffeine_level: f64,
@@ -10,7 +12,7 @@ pub struct HomeController {
 }
 
 impl HomeController {
-    pub fn new(db: crate::repository::connection::DbConnection) -> DuckResult<Self> {
+    pub fn new(db: DbConnection) -> DuckResult<Self> {
         let repo = crate::repository::duckdb::DrinkRepository::new(db)?;
         let current_caffeine_level = repo.current_caffeine_level()?;
         let today_total_caffeine = repo.get_today_total_caffeine()?;
@@ -25,13 +27,22 @@ impl HomeController {
 
 impl Screen for HomeController {
     fn render(&self, frame: &mut ratatui::Frame) {
-        home::render(frame, self);
+        crate::view::home::render(frame, self);
     }
 
     fn handle_input(&mut self, key: ratatui::crossterm::event::KeyCode) -> AppAction {
-        if key == ratatui::crossterm::event::KeyCode::Char('q') {
-            return AppAction::Quit;
+        match key {
+            ratatui::crossterm::event::KeyCode::Char('q') => AppAction::Quit,
+            ratatui::crossterm::event::KeyCode::Char('a') => {
+                match AddDrinkScreen::new() {
+                    Ok(add_screen) => {
+                        let popover = PopoverScreen::new(Box::new(add_screen), 60, 20);
+                        AppAction::PushScreen(Box::new(popover))
+                    }
+                    Err(_) => AppAction::Continue,
+                }
+            }
+            _ => AppAction::Continue,
         }
-        AppAction::Continue
     }
 }

@@ -17,11 +17,16 @@ impl DrinkRepository {
 
     fn init_schema(&self) -> duckdb::Result<()> {
         self.db.execute(
+            "CREATE SEQUENCE IF NOT EXISTS drinks_id_seq START 1",
+            &[],
+        )?;
+        self.db.execute(
             "CREATE TABLE IF NOT EXISTS drinks (
-                id INTEGER PRIMARY KEY,
+                id INTEGER NOT NULL DEFAULT nextval('drinks_id_seq'),
                 drink_name VARCHAR NOT NULL,
                 caffeine_mg INTEGER NOT NULL,
-                consumed_at TIMESTAMP WITH TIME ZONE NOT NULL
+                consumed_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                PRIMARY KEY (id)
             )",
             &[],
         )?;

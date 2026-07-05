@@ -51,9 +51,6 @@ impl Screen for PopoverScreen {
     }
 
     fn handle_input(&mut self, key: ratatui::crossterm::event::KeyCode) -> AppAction {
-        if key == ratatui::crossterm::event::KeyCode::Esc {
-            return AppAction::PopScreen;
-        }
         self.inner.handle_input(key)
     }
 }

@@ -28,7 +28,8 @@ impl AppController {
 
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    match self.handle_input(key.code) {
+                    let action = self.handle_input(key.code);
+                    match action {
                         AppAction::Quit => return Ok(()),
                         AppAction::Continue => {}
                         AppAction::PushScreen(screen) => self.push_screen(screen),
@@ -51,9 +52,22 @@ impl AppController {
 
     fn handle_input(&mut self, key: KeyCode) -> AppAction {
         if let Some(screen) = self.screen_stack.last_mut() {
-            screen.handle_input(key)
-        } else {
-            AppAction::Quit
+            let action = screen.handle_input(key);
+            if action != AppAction::Continue {
+                return action;
+            }
+        }
+
+        // Fallback: no screen handled it, check app-level shortcuts
+        match key {
+            KeyCode::Char('q') => {
+                if self.screen_stack.len() > 1 {
+                    AppAction::PopScreen
+                } else {
+                    AppAction::Quit
+                }
+            }
+            _ => AppAction::Continue,
         }
     }
 }

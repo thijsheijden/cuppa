@@ -110,6 +110,10 @@ impl Screen for HomeController {
                 let _ = self.refresh();
                 AppAction::Continue
             }
+            ratatui::crossterm::event::KeyCode::Char('l') => {
+                // TODO: Open log view
+                AppAction::Continue
+            }
             _ => AppAction::Continue,
         }
     }

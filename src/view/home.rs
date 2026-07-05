@@ -64,6 +64,10 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
     frame.render_widget(recent_table, bottom_layout[1]);
 
     let footer_text = Line::from(vec![
+        Span::styled("<a>", Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)),
+        Span::raw(" Add  "),
+        Span::styled("<l>", Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)),
+        Span::raw(" View Log  "),
         Span::styled("<q>", Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)),
         Span::raw(" Quit"),
     ]);
@@ -97,12 +101,12 @@ fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeControl
 
     let num_points = controller.caffeine_series.len() as f64;
 
-    let x_labels = vec![
-        Line::from("00:00"),
-        Line::from("06:00"),
-        Line::from("12:00"),
-        Line::from("18:00"),
-        Line::from("24:00"),
+    let x_labels: Vec<Line> = vec![
+        Line::from(controller.caffeine_series.first().map(|(t, _)| t.as_str()).unwrap_or("-12h")),
+        Line::from(controller.caffeine_series.get(controller.caffeine_series.len() / 4).map(|(t, _)| t.as_str()).unwrap_or("-6h")),
+        Line::from(controller.caffeine_series.get(controller.caffeine_series.len() / 2).map(|(t, _)| t.as_str()).unwrap_or("now")),
+        Line::from(controller.caffeine_series.get(3 * controller.caffeine_series.len() / 4).map(|(t, _)| t.as_str()).unwrap_or("+6h")),
+        Line::from(controller.caffeine_series.last().map(|(t, _)| t.as_str()).unwrap_or("+12h")),
     ];
 
     let y_step = (max_level / 4.0).ceil();

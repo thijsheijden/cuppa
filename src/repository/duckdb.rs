@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc, Duration, Local, TimeZone};
 
 use crate::repository::{connection::DbConnection, DrinkRecord};
 
@@ -81,8 +81,7 @@ impl DrinkRepository {
         let mut stmt = self.db.prepare(&sql)?;
         let row_mapper = |row: &duckdb::Row<'_>| {
             let consumed_at_str: String = row.get(3)?;
-            let consumed_at = DateTime::parse_from_rfc3339(&consumed_at_str)
-                .map(|dt| dt.with_timezone(&Utc))
+            let consumed_at = parse_duckdb_timestamp(&consumed_at_str)
                 .unwrap_or_else(|_| Utc::now());
 
             Ok(DrinkRecord {
@@ -135,13 +134,13 @@ impl DrinkRepository {
         let cutoff = now - Duration::hours(72);
         let drinks = self.get_drinks_since(cutoff)?;
 
-        let today_start = now.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
-        let tomorrow_start = today_start + Duration::days(1);
+        let start = now - Duration::hours(12);
+        let end = now + Duration::hours(12);
 
         let mut points = Vec::new();
-        let mut t = today_start;
+        let mut t = start;
 
-        while t <= tomorrow_start {
+        while t <= end {
             let level = Self::calculate_level_at(&drinks, t);
             points.push((t, level));
             t += Duration::minutes(15);
@@ -163,8 +162,7 @@ impl DrinkRepository {
         )?;
         let rows = stmt.query_map(&[&since.to_rfc3339() as &dyn duckdb::ToSql], |row| {
             let consumed_at_str: String = row.get(3)?;
-            let consumed_at = DateTime::parse_from_rfc3339(&consumed_at_str)
-                .map(|dt| dt.with_timezone(&Utc))
+            let consumed_at = parse_duckdb_timestamp(&consumed_at_str)
                 .unwrap_or_else(|_| Utc::now());
 
             Ok(DrinkRecord {
@@ -187,10 +185,41 @@ impl DrinkRepository {
     }
 
     fn decayed_amount(initial_mg: f64, consumed_at: DateTime<Utc>, at: DateTime<Utc>) -> f64 {
-        if at <= consumed_at {
+        if at < consumed_at {
+            return 0.0;
+        }
+        if at == consumed_at {
             return initial_mg;
         }
         let hours_elapsed = at.signed_duration_since(consumed_at).num_seconds() as f64 / 3600.0;
         initial_mg * 0.5f64.powf(hours_elapsed / CAFFEINE_HALF_LIFE_HOURS)
     }
+}
+
+fn parse_duckdb_timestamp(s: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
+    let normalized = s.replace(' ', "T");
+    
+    if let Ok(dt) = DateTime::parse_from_rfc3339(&normalized) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    
+    // Handle short offsets like +02, +00 (DuckDB format: +HH without :MM)
+    let with_colon = if let Some(pos) = normalized.rfind('+').or_else(|| normalized.rfind('-')) {
+        let after = &normalized[pos+1..];
+        // If offset is just digits (like +02 or +00), append :00
+        if after.len() == 2 && after.chars().all(|c| c.is_ascii_digit()) {
+            format!("{}:00", &normalized[..pos+3])
+        } else {
+            normalized
+        }
+    } else {
+        normalized
+    };
+    
+    if let Ok(dt) = DateTime::parse_from_rfc3339(&with_colon) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    
+    let naive = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f")?;
+    Ok(DateTime::from_naive_utc_and_offset(naive, Utc))
 }

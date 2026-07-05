@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 
 pub mod connection;
+pub mod drink_type;
 pub mod duckdb;
 
 #[derive(Debug, Clone)]

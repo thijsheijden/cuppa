@@ -1,3 +1,4 @@
+mod entity;
 mod repository;
 
 use std::io;

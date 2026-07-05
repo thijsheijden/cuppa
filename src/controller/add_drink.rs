@@ -30,7 +30,7 @@ impl AddDrinkScreen {
     pub fn new() -> Result<Self, duckdb::Error> {
         let db = DbConnection::open("cuppa.db")?;
         let repo = DrinkTypeRepository::new(db)?;
-        let drink_types = repo.get_all_drink_types()?;
+        let drink_types = repo.get_drink_types_sorted_by_consumption()?;
         let filtered_types = drink_types.clone();
 
         let mut list_state = ListState::default();

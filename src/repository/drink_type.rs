@@ -56,6 +56,30 @@ impl DrinkTypeRepository {
         Ok(key)
     }
 
+    pub fn get_drink_types_sorted_by_consumption(&self) -> duckdb::Result<Vec<(String, String, i32)>> {
+        let mut stmt = self.db.prepare(
+            "SELECT dt.key, dt.name, dt.caffeine_mg, COUNT(d.id) as consumption_count
+             FROM drink_types dt
+             LEFT JOIN drinks d ON dt.name = d.drink_name
+             GROUP BY dt.key, dt.name, dt.caffeine_mg
+             ORDER BY consumption_count DESC, dt.name ASC"
+        )?;
+        
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i32>(2)?,
+            ))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
+    }
+
     pub fn get_all_drink_types(&self) -> DuckResult<Vec<(String, String, i32)>> {
         let mut stmt = self.db.prepare("SELECT key, name, caffeine_mg FROM drink_types ORDER BY name")?;
         let rows = stmt.query_map([], |row: &duckdb::Row<'_>| {

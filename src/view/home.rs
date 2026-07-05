@@ -90,7 +90,7 @@ fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeControl
         .iter()
         .map(|(_, level)| *level)
         .fold(0.0f64, f64::max)
-        .max(1.0);
+        .max(50.0); // Ensure threshold is visible
 
     let data: Vec<(f64, f64)> = controller
         .caffeine_series
@@ -109,18 +109,23 @@ fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeControl
         Line::from(controller.caffeine_series.last().map(|(t, _)| t.as_str()).unwrap_or("+12h")),
     ];
 
-    let y_step = (max_level / 4.0).ceil();
-    let y_labels: Vec<Line> = (0..=4)
-        .map(|i| Line::from(format!("{:.0} mg", i as f64 * y_step)))
-        .collect();
-
     let dataset = ratatui::widgets::Dataset::default()
         .marker(symbols::Marker::Dot)
         .graph_type(ratatui::widgets::GraphType::Line)
         .style(Style::default().fg(Color::Cyan))
         .data(&data);
 
-    let chart = ratatui::widgets::Chart::new(vec![dataset])
+    let threshold_data: Vec<(f64, f64)> = (0..controller.caffeine_series.len())
+        .step_by(2)
+        .map(|i| (i as f64, 50.0))
+        .collect();
+    let threshold_dataset = ratatui::widgets::Dataset::default()
+        .marker(symbols::Marker::Dot)
+        .graph_type(ratatui::widgets::GraphType::Scatter)
+        .style(Style::default().fg(Color::Magenta))
+        .data(&threshold_data);
+
+    let chart = ratatui::widgets::Chart::new(vec![dataset, threshold_dataset])
         .block(Block::default().borders(Borders::ALL).title("Caffeine Chart"))
         .x_axis(
             ratatui::widgets::Axis::default()
@@ -132,10 +137,97 @@ fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeControl
             ratatui::widgets::Axis::default()
                 .style(Style::default().fg(Color::Gray))
                 .bounds([0.0, max_level])
-                .labels(y_labels)
         );
 
     frame.render_widget(chart, area);
+
+    // Draw custom y-axis labels at precise positions inside the chart
+    let inner = area.inner(ratatui::layout::Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    // Ratatui Chart reserves the bottom 2 rows of inner area:
+    // - 1 row for the x-axis tick line
+    // - 1 row for x-axis labels
+    let plot_height = inner.height.saturating_sub(2) as f64;
+    let plot_y = inner.y;
+    let plot_bottom = plot_y + inner.height.saturating_sub(3);
+
+    // 0 mg label at bottom of plot area (above x-axis tick line)
+    let zero_label = Paragraph::new("0 mg")
+        .style(Style::default().fg(Color::Gray));
+    let zero_area = Rect::new(
+        inner.x,
+        plot_bottom,
+        6,
+        1,
+    );
+    frame.render_widget(zero_label, zero_area);
+
+    // Max label at top of plot area
+    let max_label_text = format!("{:.0} mg", max_level);
+    let max_label = Paragraph::new(max_label_text.clone())
+        .style(Style::default().fg(Color::Gray));
+    let max_area = Rect::new(
+        inner.x,
+        plot_y,
+        max_label_text.len() as u16 + 1,
+        1,
+    );
+    frame.render_widget(max_label, max_area);
+
+    // 50 mg label at precise height within plot area
+    // Only show if there's room (at least 1 row away from 0 and max)
+    if max_level > 50.0 {
+        let threshold_y = ((plot_height - 1.0) * (1.0 - 50.0 / max_level)).round() as u16;
+        let threshold_y = threshold_y.min(plot_height.round() as u16 - 1);
+        // Ensure 50mg label doesn't overlap with 0mg or max labels
+        let min_y = 1; // at least 1 row below max
+        let max_y = plot_bottom.saturating_sub(plot_y).saturating_sub(2); // at least 2 rows above 0
+        if threshold_y >= min_y && threshold_y <= max_y && max_y >= min_y {
+            let label_50 = Paragraph::new("50 mg")
+                .style(Style::default().fg(Color::Magenta));
+            let label_50_area = Rect::new(
+                inner.x,
+                plot_y + threshold_y,
+                6,
+                1,
+            );
+            frame.render_widget(label_50, label_50_area);
+        }
+    }
+
+    // 25% label
+    let pct25 = max_level * 0.25;
+    let y25 = ((plot_height - 1.0) * 0.75).round() as u16; // 75% from top = 25% from bottom
+    let y25 = y25.min(plot_bottom.saturating_sub(plot_y).saturating_sub(1));
+    if y25 >= 1 {
+        let label_25 = Paragraph::new(format!("{:.0}", pct25))
+            .style(Style::default().fg(Color::Gray));
+        let label_25_area = Rect::new(
+            inner.x,
+            plot_y + y25,
+            6,
+            1,
+        );
+        frame.render_widget(label_25, label_25_area);
+    }
+
+    // 75% label
+    let pct75 = max_level * 0.75;
+    let y75 = ((plot_height - 1.0) * 0.25).round() as u16; // 25% from top = 75% from bottom
+    let y75 = y75.min(plot_bottom.saturating_sub(plot_y).saturating_sub(1));
+    if y75 >= 1 && y75 < y25 {
+        let label_75 = Paragraph::new(format!("{:.0}", pct75))
+            .style(Style::default().fg(Color::Gray));
+        let label_75_area = Rect::new(
+            inner.x,
+            plot_y + y75,
+            6,
+            1,
+        );
+        frame.render_widget(label_75, label_75_area);
+    }
 }
 
 fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {

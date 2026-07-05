@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 
+pub mod connection;
 pub mod duckdb;
 
 #[derive(Debug, Clone)]

@@ -1,3 +1,5 @@
+mod repository;
+
 use std::io;
 
 use ratatui::{

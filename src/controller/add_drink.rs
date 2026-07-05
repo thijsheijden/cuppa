@@ -1,6 +1,6 @@
 use ratatui::{
-    crossterm::event::KeyCode,
-    layout::{Constraint, Direction, Layout},
+    crossterm::event::{KeyCode, KeyEvent},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
@@ -184,9 +184,9 @@ impl Screen for AddDrinkScreen {
         frame.render_stateful_widget(list_widget, layout[1], &mut self.list_state.clone());
     }
 
-    fn handle_input(&mut self, key: KeyCode) -> AppAction {
+    fn handle_input(&mut self, key: KeyEvent) -> AppAction {
         if self.search_focused {
-            match key {
+            match key.code {
                 KeyCode::Esc => {
                     self.search_focused = false;
                     if !self.filtered_types.is_empty() {
@@ -211,7 +211,7 @@ impl Screen for AddDrinkScreen {
             return AppAction::Continue;
         }
 
-        match key {
+        match key.code {
             KeyCode::Char('/') => {
                 self.search_focused = true;
             }

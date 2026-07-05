@@ -1,6 +1,7 @@
 use duckdb::Result as DuckResult;
 
 use chrono::{Local, Utc, TimeZone};
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::controller::add_drink::AddDrinkScreen;
 use crate::controller::popover::PopoverScreen;
@@ -123,10 +124,10 @@ impl Screen for HomeController {
         crate::view::home::render(frame, self);
     }
 
-    fn handle_input(&mut self, key: ratatui::crossterm::event::KeyCode) -> AppAction {
-        match key {
-            ratatui::crossterm::event::KeyCode::Char('q') => AppAction::Quit,
-            ratatui::crossterm::event::KeyCode::Char('a') => {
+    fn handle_input(&mut self, key: KeyEvent) -> AppAction {
+        match key.code {
+            KeyCode::Char('q') => AppAction::Quit,
+            KeyCode::Char('a') => {
                 match AddDrinkScreen::new() {
                     Ok(add_screen) => {
                         let popover = PopoverScreen::new(Box::new(add_screen), 60, 20);
@@ -135,11 +136,11 @@ impl Screen for HomeController {
                     Err(_) => AppAction::Continue,
                 }
             }
-            ratatui::crossterm::event::KeyCode::F(5) => {
+            KeyCode::F(5) => {
                 let _ = self.refresh();
                 AppAction::Continue
             }
-            ratatui::crossterm::event::KeyCode::Char('l') => {
+            KeyCode::Char('l') => {
                 match crate::controller::drink_log::DrinkLogScreen::new() {
                     Ok(log_screen) => {
                         let popover = crate::controller::popover::PopoverScreen::new(Box::new(log_screen), 60, 18);

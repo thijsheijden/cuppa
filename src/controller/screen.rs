@@ -1,6 +1,8 @@
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
 pub trait Screen {
     fn render(&self, frame: &mut ratatui::Frame);
-    fn handle_input(&mut self, key: ratatui::crossterm::event::KeyCode) -> AppAction;
+    fn handle_input(&mut self, key: KeyEvent) -> AppAction;
 }
 
 pub enum AppAction {

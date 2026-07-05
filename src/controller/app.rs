@@ -1,5 +1,5 @@
 use ratatui::{
-    crossterm::event::{self, Event, KeyCode, KeyEventKind},
+    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     prelude::*,
 };
 
@@ -27,8 +27,13 @@ impl AppController {
             })?;
 
             if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    let action = self.handle_input(key.code);
+                if key.kind == ratatui::crossterm::event::KeyEventKind::Press {
+                    // Global Ctrl+C shortcut
+                    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+                        return Ok(());
+                    }
+
+                    let action = self.handle_input(key);
                     match action {
                         AppAction::Quit => return Ok(()),
                         AppAction::Continue => {}
@@ -39,7 +44,7 @@ impl AppController {
                             }
                             // Refresh home screen data after closing a popup
                             if let Some(screen) = self.screen_stack.last_mut() {
-                                let _ = screen.handle_input(KeyCode::F(5));
+                                let _ = screen.handle_input(KeyEvent::from(KeyCode::F(5)));
                             }
                         }
                     }
@@ -54,7 +59,7 @@ impl AppController {
         }
     }
 
-    fn handle_input(&mut self, key: KeyCode) -> AppAction {
+    fn handle_input(&mut self, key: KeyEvent) -> AppAction {
         if let Some(screen) = self.screen_stack.last_mut() {
             let action = screen.handle_input(key);
             if action != AppAction::Continue {
@@ -63,7 +68,7 @@ impl AppController {
         }
 
         // Fallback: no screen handled it, check app-level shortcuts
-        match key {
+        match key.code {
             KeyCode::Char('q') => {
                 if self.screen_stack.len() > 1 {
                     AppAction::PopScreen

@@ -1,5 +1,5 @@
 use ratatui::{
-    crossterm::event::KeyCode,
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Rect},
     style::{Color, Style},
     text::Span,
@@ -210,9 +210,13 @@ impl Screen for DrinkLogScreen {
         }
     }
 
-    fn handle_input(&mut self, key: KeyCode) -> AppAction {
+    fn handle_input(&mut self, key: KeyEvent) -> AppAction {
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            return AppAction::Quit;
+        }
+
         if self.confirming_delete {
-            match key {
+            match key.code {
                 KeyCode::Enter | KeyCode::Char('y') => {
                     let _ = self.delete_selected();
                     self.confirming_delete = false;
@@ -225,7 +229,7 @@ impl Screen for DrinkLogScreen {
             return AppAction::Continue;
         }
 
-        match key {
+        match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 self.select_next();
             }

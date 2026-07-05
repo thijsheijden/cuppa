@@ -1,4 +1,5 @@
 use ratatui::{
+    crossterm::event::{KeyCode, KeyEvent},
     layout::{Margin, Rect},
     style::Color,
     widgets::{Block, Borders, Clear},
@@ -53,7 +54,7 @@ impl Screen for PopoverScreen {
         self.inner.render(frame);
     }
 
-    fn handle_input(&mut self, key: ratatui::crossterm::event::KeyCode) -> AppAction {
+    fn handle_input(&mut self, key: KeyEvent) -> AppAction {
         self.inner.handle_input(key)
     }
 }

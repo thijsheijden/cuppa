@@ -1,5 +1,5 @@
 use ratatui::{
-    crossterm::event::KeyCode,
+    crossterm::event::{KeyCode, KeyEvent},
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
@@ -70,8 +70,8 @@ impl Screen for ErrorScreen {
         frame.render_widget(footer_widget, layout[1]);
     }
 
-    fn handle_input(&mut self, key: KeyCode) -> AppAction {
-        match key {
+    fn handle_input(&mut self, key: KeyEvent) -> AppAction {
+        match key.code {
             KeyCode::Enter | KeyCode::Esc => AppAction::PopScreen,
             _ => AppAction::Continue,
         }

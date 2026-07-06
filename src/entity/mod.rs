@@ -1,3 +1,5 @@
+pub mod setting;
+
 #[derive(Debug, Clone)]
 pub struct Drink {
     pub id: &'static str,

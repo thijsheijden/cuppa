@@ -158,6 +158,28 @@ fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeControl
     let bar_style = Style::default().fg(Color::Yellow);
     let label_style = Style::default().fg(Color::Gray);
 
+    // Draw dashed purple line at y=50 (caffeine level) before bars so bars show on top
+    let line_y = if max_level >= 50.0 {
+        let line_pct = 50.0 / max_level;
+        let line_offset_from_bottom = (line_pct * plot_height).round() as u16;
+        let line_y = plot_bottom.saturating_sub(line_offset_from_bottom);
+        if line_y >= plot_y && line_y <= plot_bottom {
+            let dash_style = Style::default().fg(Color::Magenta);
+            for cx in inner.x..(inner.x + inner.width) {
+                // Dense dash pattern: draw dash every cell
+                if ((cx - inner.x) % 1) == 0 {
+                    let cell = frame.buffer_mut().get_mut(cx, line_y);
+                    cell.set_symbol("-").set_style(dash_style);
+                }
+            }
+            Some(line_y)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let mut x = inner.x;
     for (i, (time, level)) in controller.caffeine_series.iter().enumerate() {
         if x + bar_width > inner.x + inner.width {

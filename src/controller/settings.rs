@@ -274,7 +274,7 @@ impl Screen for SettingsScreen {
         }
 
         // Footer
-        let footer = Paragraph::new("<Tab> Switch field  <Esc> Save & Close")
+        let footer = Paragraph::new("<Tab> Switch field  <Esc>/<q> Save & Close")
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center);
         frame.render_widget(footer, layout[6]);
@@ -282,7 +282,7 @@ impl Screen for SettingsScreen {
 
     fn handle_input(&mut self, key: KeyEvent) -> AppAction {
         match key.code {
-            KeyCode::Esc => {
+            KeyCode::Esc | KeyCode::Char('q') => {
                 if let Err(_) = self.save() {
                     // Ignore save errors on exit
                 }

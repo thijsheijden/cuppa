@@ -8,6 +8,7 @@ use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
 use crate::repository::connection::DbConnection;
 use crate::repository::duckdb::{DrinkFilter, DrinkRepository};
+use crate::repository::setting::SettingRepository;
 
 pub struct HomeController {
     pub current_caffeine_level: f64,
@@ -17,6 +18,8 @@ pub struct HomeController {
     pub caffeine_series: Vec<(String, f64)>,
     pub sleep_time: Option<String>,
     pub current_time: String,
+    pub bedtime: String,
+    pub bedtime_caffeine_mg: i32,
 }
 
 impl HomeController {
@@ -28,6 +31,8 @@ impl HomeController {
         let caffeine_series = Self::load_caffeine_series()?;
         let sleep_time = Self::load_sleep_time()?;
 
+        let (bedtime, bedtime_caffeine_mg) = Self::load_settings()?;
+
         let current_time = Local::now().format("%H:%M").to_string();
 
         Ok(Self {
@@ -38,7 +43,26 @@ impl HomeController {
             caffeine_series,
             sleep_time,
             current_time,
+            bedtime,
+            bedtime_caffeine_mg,
         })
+    }
+
+    fn load_settings() -> DuckResult<(String, i32)> {
+        let db = DbConnection::open("cuppa.db")?;
+        let repo = SettingRepository::new(db)?;
+        
+        let bedtime = repo
+            .get_setting(crate::entity::setting::SETTING_BEDTIME)?
+            .map(|s| s.value)
+            .unwrap_or_else(|| "23:00".to_string());
+        
+        let bedtime_caffeine_mg = repo
+            .get_setting(crate::entity::setting::SETTING_CAFFEINE_MG_AT_BEDTIME)?
+            .and_then(|s| s.as_int())
+            .unwrap_or(50);
+        
+        Ok((bedtime, bedtime_caffeine_mg))
     }
 
     fn load_todays_drinks() -> DuckResult<Vec<(String, String)>> {
@@ -120,6 +144,11 @@ impl HomeController {
         self.caffeine_series = Self::load_caffeine_series()?;
         self.sleep_time = Self::load_sleep_time()?;
         self.current_time = Local::now().format("%H:%M").to_string();
+        
+        let (bedtime, bedtime_caffeine_mg) = Self::load_settings()?;
+        self.bedtime = bedtime;
+        self.bedtime_caffeine_mg = bedtime_caffeine_mg;
+        
         Ok(())
     }
 }

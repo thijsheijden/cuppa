@@ -249,12 +249,44 @@ fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeControl
         }
     }
 
-    // Draw purple circle at x=23:00, y=50 if within bounds
-    if let Some(idx_23) = controller.caffeine_series.iter().position(|(t, _)| t.starts_with("23:")) {
-        let circle_x = inner.x + (idx_23 as u16 * bar_width) + (bar_width / 2);
-        if circle_x >= inner.x && circle_x < inner.x + inner.width {
-            if let Some(line_y) = line_y {
-                frame.buffer_mut().get_mut(circle_x, line_y).set_symbol("●").set_style(Style::default().fg(Color::Magenta));
+    // Draw purple circle at bedtime x, y=bedtime_caffeine_mg if within bounds
+    let threshold = controller.bedtime_caffeine_mg as f64;
+    let threshold_pct = threshold / max_level;
+    let threshold_offset_from_bottom = (threshold_pct * plot_height).round() as u16;
+    let threshold_y = plot_bottom.saturating_sub(threshold_offset_from_bottom);
+    if threshold_y >= plot_y && threshold_y <= plot_bottom {
+        // Find the bar closest to bedtime
+        let bedtime_parts: Vec<&str> = controller.bedtime.split(':').collect();
+        if bedtime_parts.len() == 2 {
+            if let (Ok(bedtime_h), Ok(bedtime_m)) = (bedtime_parts[0].parse::<u8>(), bedtime_parts[1].parse::<u8>()) {
+                let mut closest_idx = None;
+                let mut closest_diff = u16::MAX;
+                let bedtime_minutes = (bedtime_h as u16) * 60 + (bedtime_m as u16);
+                
+                for (i, (t, _)) in controller.caffeine_series.iter().enumerate() {
+                    let t_parts: Vec<&str> = t.split(':').collect();
+                    if t_parts.len() == 2 {
+                        if let (Ok(t_h), Ok(t_m)) = (t_parts[0].parse::<u8>(), t_parts[1].parse::<u8>()) {
+                            let t_minutes = (t_h as u16) * 60 + (t_m as u16);
+                            let diff = if t_minutes >= bedtime_minutes {
+                                t_minutes - bedtime_minutes
+                            } else {
+                                bedtime_minutes - t_minutes
+                            };
+                            if diff < closest_diff {
+                                closest_diff = diff;
+                                closest_idx = Some(i);
+                            }
+                        }
+                    }
+                }
+                
+                if let Some(idx_bedtime) = closest_idx {
+                    let circle_x = inner.x + (idx_bedtime as u16 * bar_width) + (bar_width / 2);
+                    if circle_x < inner.x + inner.width {
+                        frame.buffer_mut().get_mut(circle_x, threshold_y).set_symbol("●").set_style(Style::default().fg(Color::Magenta));
+                    }
+                }
             }
         }
     }

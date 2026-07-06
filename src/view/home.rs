@@ -63,7 +63,7 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
         ]),
     };
 
-    let stats_text = ratatui::text::Text::from(vec![current_line, today_line, sleep_line]);
+    let stats_text = ratatui::text::Text::from(vec![current_line, today_line]);
     let stats_widget = Paragraph::new(stats_text)
         .block(Block::default().borders(Borders::ALL).title("Statistics"));
     frame.render_widget(stats_widget, bottom_layout[0]);
@@ -164,14 +164,6 @@ fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeControl
         let line_offset_from_bottom = (line_pct * plot_height).round() as u16;
         let line_y = plot_bottom.saturating_sub(line_offset_from_bottom);
         if line_y >= plot_y && line_y <= plot_bottom {
-            let dash_style = Style::default().fg(Color::Magenta);
-            for cx in inner.x..(inner.x + inner.width) {
-                // Dense dash pattern: draw dash every cell
-                if ((cx - inner.x) % 1) == 0 {
-                    let cell = frame.buffer_mut().get_mut(cx, line_y);
-                    cell.set_symbol("-").set_style(dash_style);
-                }
-            }
             Some(line_y)
         } else {
             None
@@ -251,6 +243,16 @@ fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeControl
         if dot_x < inner.x + inner.width {
             if dot_row_y < inner.y + inner.height {
                 frame.buffer_mut().get_mut(dot_x, dot_row_y).set_symbol("●").set_style(Style::default().fg(Color::Green));
+            }
+        }
+    }
+
+    // Draw purple circle at x=23:00, y=50 if within bounds
+    if let Some(idx_23) = controller.caffeine_series.iter().position(|(t, _)| t.starts_with("23:")) {
+        let circle_x = inner.x + (idx_23 as u16 * bar_width) + (bar_width / 2);
+        if circle_x >= inner.x && circle_x < inner.x + inner.width {
+            if let Some(line_y) = line_y {
+                frame.buffer_mut().get_mut(circle_x, line_y).set_symbol("●").set_style(Style::default().fg(Color::Magenta));
             }
         }
     }

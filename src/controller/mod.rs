@@ -6,3 +6,4 @@ pub mod error_screen;
 pub mod home;
 pub mod popover;
 pub mod screen;
+pub mod settings;

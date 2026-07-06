@@ -93,6 +93,8 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
         Span::raw(" Add  "),
         Span::styled("<l>", Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)),
         Span::raw(" View Log  "),
+        Span::styled("<s>", Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)),
+        Span::raw(" Settings  "),
         Span::styled("<q>", Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)),
         Span::raw(" Quit"),
     ]);

@@ -154,6 +154,15 @@ impl Screen for HomeController {
                     Err(_) => AppAction::Continue,
                 }
             }
+            KeyCode::Char('s') => {
+                match crate::controller::settings::SettingsScreen::new() {
+                    Ok(settings_screen) => {
+                        let popover = crate::controller::popover::PopoverScreen::new(Box::new(settings_screen), 50, 16);
+                        AppAction::PushScreen(Box::new(popover))
+                    }
+                    Err(_) => AppAction::Continue,
+                }
+            }
             _ => AppAction::Continue,
         }
     }

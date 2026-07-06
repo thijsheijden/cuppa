@@ -1,16 +1,17 @@
 use ratatui::{
+    buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    symbols,
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Widget},
     Frame,
 };
 
 use crate::controller::home::HomeController;
 
-const VIEW_WIDTH: u16 = 80;
-const VIEW_HEIGHT: u16 = 24;
+const VIEW_WIDTH: u16 = 87;
+const VIEW_HEIGHT: u16 = 26;
+const CHART_HEIGHT: u16 = 14;
 
 pub fn render(frame: &mut Frame, controller: &HomeController) {
     let area = frame.area();
@@ -20,7 +21,7 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(12),
+            Constraint::Length(CHART_HEIGHT),
             Constraint::Min(0),
             Constraint::Length(1),
         ])
@@ -114,142 +115,163 @@ fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeControl
         .iter()
         .map(|(_, level)| *level)
         .fold(0.0f64, f64::max)
-        .max(50.0); // Ensure threshold is visible
+        .max(50.0);
 
-    let data: Vec<(f64, f64)> = controller
-        .caffeine_series
-        .iter()
-        .enumerate()
-        .map(|(i, (_, level))| (i as f64, *level))
-        .collect();
+    // Fixed bar width of 2, with 40 bars we need 80 columns for bars
+    // Plus 5 for y-axis labels, plus 2 for borders = 87 total
+    let bar_width: u16 = 2;
+    let num_bars = controller.caffeine_series.len() as u16;
+    let needed_width = num_bars * bar_width;
+    
+    // Reserve left column for y-axis labels (wider to fit "mg")
+    let label_width = 7u16;
+    let chart_area = Rect::new(
+        area.x + label_width,
+        area.y,
+        area.width.saturating_sub(label_width),
+        area.height,
+    );
 
-    let num_points = controller.caffeine_series.len() as f64;
+    // Draw the block border first
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title("Caffeine Chart");
+    frame.render_widget(block, chart_area);
 
-    let x_labels: Vec<Line> = vec![
-        Line::from(controller.caffeine_series.first().map(|(t, _)| t.as_str()).unwrap_or("-12h")),
-        Line::from(controller.caffeine_series.get(controller.caffeine_series.len() / 4).map(|(t, _)| t.as_str()).unwrap_or("-6h")),
-        Line::from(controller.caffeine_series.get(controller.caffeine_series.len() / 2).map(|(t, _)| t.as_str()).unwrap_or("now")),
-        Line::from(controller.caffeine_series.get(3 * controller.caffeine_series.len() / 4).map(|(t, _)| t.as_str()).unwrap_or("+6h")),
-        Line::from(controller.caffeine_series.last().map(|(t, _)| t.as_str()).unwrap_or("+12h")),
-    ];
-
-    let dataset = ratatui::widgets::Dataset::default()
-        .marker(symbols::Marker::Dot)
-        .graph_type(ratatui::widgets::GraphType::Line)
-        .style(Style::default().fg(Color::Cyan))
-        .data(&data);
-
-    let threshold_data: Vec<(f64, f64)> = (0..controller.caffeine_series.len())
-        .step_by(2)
-        .map(|i| (i as f64, 50.0))
-        .collect();
-    let threshold_dataset = ratatui::widgets::Dataset::default()
-        .marker(symbols::Marker::Dot)
-        .graph_type(ratatui::widgets::GraphType::Scatter)
-        .style(Style::default().fg(Color::Magenta))
-        .data(&threshold_data);
-
-    let chart = ratatui::widgets::Chart::new(vec![dataset, threshold_dataset])
-        .block(Block::default().borders(Borders::ALL).title("Caffeine Chart"))
-        .x_axis(
-            ratatui::widgets::Axis::default()
-                .style(Style::default().fg(Color::Gray))
-                .bounds([0.0, num_points - 1.0])
-                .labels(x_labels)
-        )
-        .y_axis(
-            ratatui::widgets::Axis::default()
-                .style(Style::default().fg(Color::Gray))
-                .bounds([0.0, max_level])
-        );
-
-    frame.render_widget(chart, area);
-
-    // Draw custom y-axis labels at precise positions inside the chart
-    let inner = area.inner(ratatui::layout::Margin {
+    let inner = chart_area.inner(ratatui::layout::Margin {
         horizontal: 1,
         vertical: 1,
     });
-    // Ratatui Chart reserves the bottom 2 rows of inner area:
-    // - 1 row for the x-axis tick line
-    // - 1 row for x-axis labels
+
+    // Plot area: reserve bottom 2 rows for x-axis labels + green dot
     let plot_height = inner.height.saturating_sub(2) as f64;
     let plot_y = inner.y;
-    let plot_bottom = plot_y + inner.height.saturating_sub(3);
+    let plot_bottom = inner.y + inner.height.saturating_sub(3);
+    let label_row_y = inner.y + inner.height - 2;
+    let dot_row_y = inner.y + inner.height - 1;
 
-    // 0 mg label at bottom of plot area (above x-axis tick line)
-    let zero_label = Paragraph::new("0 mg")
-        .style(Style::default().fg(Color::Gray));
-    let zero_area = Rect::new(
-        inner.x,
-        plot_bottom,
-        6,
-        1,
-    );
-    frame.render_widget(zero_label, zero_area);
+    if plot_height <= 0.0 || inner.width == 0 {
+        return;
+    }
 
-    // Max label at top of plot area
-    let max_label_text = format!("{:.0} mg", max_level);
-    let max_label = Paragraph::new(max_label_text.clone())
-        .style(Style::default().fg(Color::Gray));
-    let max_area = Rect::new(
-        inner.x,
-        plot_y,
-        max_label_text.len() as u16 + 1,
-        1,
-    );
-    frame.render_widget(max_label, max_area);
+    let bar_set = ratatui::symbols::bar::NINE_LEVELS;
+    let bar_style = Style::default().fg(Color::Yellow);
+    let label_style = Style::default().fg(Color::Gray);
 
-    // 50 mg label at precise height within plot area
-    // Only show if there's room (at least 1 row away from 0 and max)
-    if max_level > 50.0 {
-        let threshold_y = ((plot_height - 1.0) * (1.0 - 50.0 / max_level)).round() as u16;
-        let threshold_y = threshold_y.min(plot_height.round() as u16 - 1);
-        // Ensure 50mg label doesn't overlap with 0mg or max labels
-        let min_y = 1; // at least 1 row below max
-        let max_y = plot_bottom.saturating_sub(plot_y).saturating_sub(2); // at least 2 rows above 0
-        if threshold_y >= min_y && threshold_y <= max_y && max_y >= min_y {
-            let label_50 = Paragraph::new("50 mg")
-                .style(Style::default().fg(Color::Magenta));
-            let label_50_area = Rect::new(
-                inner.x,
-                plot_y + threshold_y,
-                6,
-                1,
-            );
-            frame.render_widget(label_50, label_50_area);
+    let mut x = inner.x;
+    for (i, (time, level)) in controller.caffeine_series.iter().enumerate() {
+        if x + bar_width > inner.x + inner.width {
+            break;
+        }
+
+        let value = (*level).round() as u64;
+        let max_val = max_level.round() as u64;
+        let ticks = if max_val > 0 { value * 8 * plot_height as u64 / max_val } else { 0 };
+        let full_cells = (ticks / 8) as u16;
+        let partial = (ticks % 8) as usize;
+
+        // Ensure we always leave at least one row of space above the highest bar
+        let effective_full = full_cells.saturating_sub(1);
+        let effective_partial = if full_cells > 0 { partial } else { 0 };
+
+        // Draw bar from bottom up
+        let bar_bottom = plot_bottom;
+        for row in 0..plot_height as u16 {
+            let y = bar_bottom - row;
+            if row < effective_full {
+                for col in 0..bar_width {
+                    frame.buffer_mut().get_mut(x + col, y).set_symbol("█").set_style(bar_style);
+                }
+            } else if row == effective_full && effective_partial > 0 {
+                let sym = match effective_partial {
+                    1 => bar_set.one_eighth,
+                    2 => bar_set.one_quarter,
+                    3 => bar_set.three_eighths,
+                    4 => bar_set.half,
+                    5 => bar_set.five_eighths,
+                    6 => bar_set.three_quarters,
+                    7 => bar_set.seven_eighths,
+                    _ => " ",
+                };
+                for col in 0..bar_width {
+                    frame.buffer_mut().get_mut(x + col, y).set_symbol(sym).set_style(bar_style);
+                }
+            }
+        }
+
+        // Draw x-axis label every 4th bar (every hour)
+        if i % 4 == 0 {
+            let label = time.as_str();
+            let label_len = label.len() as u16;
+            let label_x = if label_len <= bar_width {
+                x + (bar_width - label_len) / 2
+            } else {
+                x
+            };
+            if label_x + label_len <= inner.x + inner.width {
+                for (j, ch) in label.chars().enumerate() {
+                    let cx = label_x + j as u16;
+                    if cx < inner.x + inner.width {
+                        frame.buffer_mut().get_mut(cx, label_row_y).set_symbol(&ch.to_string()).set_style(label_style);
+                    }
+                }
+            }
+        }
+
+        x += bar_width;
+    }
+
+    // Draw green dot below x-axis labels
+    if let Some(current_time_idx) = controller.caffeine_series.iter().position(|(t, _)| {
+        t == &controller.current_time
+    }) {
+        let dot_x = inner.x + (current_time_idx as u16 * bar_width) + (bar_width / 2);
+        if dot_x < inner.x + inner.width {
+            if dot_row_y < inner.y + inner.height {
+                frame.buffer_mut().get_mut(dot_x, dot_row_y).set_symbol("●").set_style(Style::default().fg(Color::Green));
+            }
         }
     }
 
-    // 25% label
+    // Draw y-axis labels in the left margin — 0, 25%, 50%, 75%, max with "mg" suffix
+    let zero_label = Paragraph::new("0mg")
+        .style(Style::default().fg(Color::Gray));
+    let zero_area = Rect::new(area.x + 1, plot_bottom, label_width - 1, 1);
+    frame.render_widget(zero_label, zero_area);
+
+    let max_label_text = format!("{:.0}mg", max_level);
+    let max_label = Paragraph::new(max_label_text.clone())
+        .style(Style::default().fg(Color::Gray));
+    let max_area = Rect::new(area.x + 1, plot_y, label_width - 1, 1);
+    frame.render_widget(max_label, max_area);
+
     let pct25 = max_level * 0.25;
-    let y25 = ((plot_height - 1.0) * 0.75).round() as u16; // 75% from top = 25% from bottom
+    let y25 = ((plot_height - 1.0) * 0.75).round() as u16;
     let y25 = y25.min(plot_bottom.saturating_sub(plot_y).saturating_sub(1));
     if y25 >= 1 {
-        let label_25 = Paragraph::new(format!("{:.0}", pct25))
+        let label_25 = Paragraph::new(format!("{:.0}mg", pct25))
             .style(Style::default().fg(Color::Gray));
-        let label_25_area = Rect::new(
-            inner.x,
-            plot_y + y25,
-            6,
-            1,
-        );
+        let label_25_area = Rect::new(area.x + 1, plot_y + y25, label_width - 1, 1);
         frame.render_widget(label_25, label_25_area);
     }
 
-    // 75% label
-    let pct75 = max_level * 0.75;
-    let y75 = ((plot_height - 1.0) * 0.25).round() as u16; // 25% from top = 75% from bottom
-    let y75 = y75.min(plot_bottom.saturating_sub(plot_y).saturating_sub(1));
-    if y75 >= 1 && y75 < y25 {
-        let label_75 = Paragraph::new(format!("{:.0}", pct75))
+    let pct50 = max_level * 0.50;
+    let y50 = ((plot_height - 1.0) * 0.50).round() as u16;
+    let y50 = y50.min(plot_bottom.saturating_sub(plot_y).saturating_sub(1));
+    if y50 >= 1 && y50 != y25 {
+        let label_50 = Paragraph::new(format!("{:.0}mg", pct50))
             .style(Style::default().fg(Color::Gray));
-        let label_75_area = Rect::new(
-            inner.x,
-            plot_y + y75,
-            6,
-            1,
-        );
+        let label_50_area = Rect::new(area.x + 1, plot_y + y50, label_width - 1, 1);
+        frame.render_widget(label_50, label_50_area);
+    }
+
+    let pct75 = max_level * 0.75;
+    let y75 = ((plot_height - 1.0) * 0.25).round() as u16;
+    let y75 = y75.min(plot_bottom.saturating_sub(plot_y).saturating_sub(1));
+    if y75 >= 1 && y75 != y50 && y75 != y25 {
+        let label_75 = Paragraph::new(format!("{:.0}mg", pct75))
+            .style(Style::default().fg(Color::Gray));
+        let label_75_area = Rect::new(area.x + 1, plot_y + y75, label_width - 1, 1);
         frame.render_widget(label_75, label_75_area);
     }
 }

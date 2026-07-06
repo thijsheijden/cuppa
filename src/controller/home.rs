@@ -16,6 +16,7 @@ pub struct HomeController {
     pub todays_drinks: Vec<(String, String)>,
     pub caffeine_series: Vec<(String, f64)>,
     pub sleep_time: Option<String>,
+    pub current_time: String,
 }
 
 impl HomeController {
@@ -27,6 +28,8 @@ impl HomeController {
         let caffeine_series = Self::load_caffeine_series()?;
         let sleep_time = Self::load_sleep_time()?;
 
+        let current_time = Local::now().format("%H:%M").to_string();
+
         Ok(Self {
             current_caffeine_level,
             today_total_caffeine,
@@ -34,6 +37,7 @@ impl HomeController {
             todays_drinks,
             caffeine_series,
             sleep_time,
+            current_time,
         })
     }
 
@@ -115,6 +119,7 @@ impl HomeController {
         self.todays_drinks = Self::load_todays_drinks()?;
         self.caffeine_series = Self::load_caffeine_series()?;
         self.sleep_time = Self::load_sleep_time()?;
+        self.current_time = Local::now().format("%H:%M").to_string();
         Ok(())
     }
 }

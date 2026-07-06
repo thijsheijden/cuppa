@@ -134,8 +134,8 @@ impl DrinkRepository {
         let cutoff = now - Duration::hours(72);
         let drinks = self.get_drinks_since(cutoff)?;
 
-        let start = now - Duration::hours(12);
-        let end = now + Duration::hours(12);
+        let start = now - Duration::hours(2);
+        let end = now + Duration::hours(8);
 
         let mut points = Vec::new();
         let mut t = start;

@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 pub mod connection;
 pub mod drink_type;
 pub mod duckdb;
+pub mod setting;
 
 #[derive(Debug, Clone)]
 pub struct DrinkRecord {

@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use duckdb::Result as DuckResult;
 
 use chrono::{Local, Utc, TimeZone};
@@ -9,6 +12,7 @@ use crate::controller::screen::{AppAction, Screen};
 use crate::repository::connection::DbConnection;
 use crate::repository::duckdb::{DrinkFilter, DrinkRepository};
 use crate::repository::setting::SettingRepository;
+use crate::sync::log::SyncLog;
 
 pub struct HomeController {
     pub current_caffeine_level: f64,
@@ -20,11 +24,12 @@ pub struct HomeController {
     pub current_time: String,
     pub bedtime: String,
     pub bedtime_caffeine_mg: i32,
+    sync_log: Rc<RefCell<SyncLog>>,
 }
 
 impl HomeController {
-    pub fn new(db: DbConnection) -> DuckResult<Self> {
-        let repo = DrinkRepository::new(db)?;
+    pub fn new(db: DbConnection, sync_log: Rc<RefCell<SyncLog>>) -> DuckResult<Self> {
+        let repo = DrinkRepository::with_sync_log(db, Rc::clone(&sync_log))?;
         let current_caffeine_level = repo.current_caffeine_level()?;
         let today_total_caffeine = repo.get_today_total_caffeine()?;
         let todays_drinks = Self::load_todays_drinks()?;
@@ -45,6 +50,7 @@ impl HomeController {
             current_time,
             bedtime,
             bedtime_caffeine_mg,
+            sync_log,
         })
     }
 
@@ -137,7 +143,7 @@ impl HomeController {
 
     pub fn refresh(&mut self) -> DuckResult<()> {
         let db = DbConnection::open("cuppa.db")?;
-        let repo = DrinkRepository::new(db)?;
+        let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
         self.current_caffeine_level = repo.current_caffeine_level()?;
         self.today_total_caffeine = repo.get_today_total_caffeine()?;
         self.todays_drinks = Self::load_todays_drinks()?;
@@ -162,7 +168,7 @@ impl Screen for HomeController {
         match key.code {
             KeyCode::Char('q') => AppAction::Quit,
             KeyCode::Char('a') => {
-                match AddDrinkScreen::new() {
+                match AddDrinkScreen::new(Rc::clone(&self.sync_log)) {
                     Ok(add_screen) => {
                         let popover = PopoverScreen::new(Box::new(add_screen), 60, 20);
                         AppAction::PushScreen(Box::new(popover))
@@ -175,7 +181,7 @@ impl Screen for HomeController {
                 AppAction::Continue
             }
             KeyCode::Char('l') => {
-                match crate::controller::drink_log::DrinkLogScreen::new() {
+                match crate::controller::drink_log::DrinkLogScreen::new(Rc::clone(&self.sync_log)) {
                     Ok(log_screen) => {
                         let popover = crate::controller::popover::PopoverScreen::new(Box::new(log_screen), 60, 18);
                         AppAction::PushScreen(Box::new(popover))

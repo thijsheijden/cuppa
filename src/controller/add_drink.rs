@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     layout::{Alignment, Constraint, Direction, Layout},
@@ -17,6 +20,7 @@ use crate::repository::{
     drink_type::DrinkTypeRepository,
     duckdb::DrinkRepository,
 };
+use crate::sync::log::SyncLog;
 
 pub struct AddDrinkScreen {
     drink_types: Vec<(String, String, i32)>,
@@ -24,10 +28,11 @@ pub struct AddDrinkScreen {
     search_query: String,
     search_focused: bool,
     list_state: ListState,
+    sync_log: Rc<RefCell<SyncLog>>,
 }
 
 impl AddDrinkScreen {
-    pub fn new() -> Result<Self, duckdb::Error> {
+    pub fn new(sync_log: Rc<RefCell<SyncLog>>) -> Result<Self, duckdb::Error> {
         let db = DbConnection::open("cuppa.db")?;
         let repo = DrinkTypeRepository::new(db)?;
         let drink_types = repo.get_drink_types_sorted_by_consumption()?;
@@ -44,6 +49,7 @@ impl AddDrinkScreen {
             search_query: String::new(),
             search_focused: false,
             list_state,
+            sync_log,
         })
     }
 
@@ -92,7 +98,7 @@ impl AddDrinkScreen {
         let (_key, name, caffeine_mg) = &self.filtered_types[index];
 
         let db = DbConnection::open("cuppa.db")?;
-        let repo = DrinkRepository::new(db)?;
+        let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
         repo.add_drink(name, *caffeine_mg, Utc::now())?;
         Ok(())
     }

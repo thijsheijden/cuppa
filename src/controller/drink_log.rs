@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Rect},
@@ -13,6 +16,7 @@ use crate::controller::screen::{AppAction, Screen};
 use crate::repository::connection::DbConnection;
 use crate::repository::duckdb::DrinkRepository;
 use crate::repository::DrinkRecord;
+use crate::sync::log::SyncLog;
 
 const PAGE_SIZE: usize = 20;
 
@@ -22,16 +26,18 @@ pub struct DrinkLogScreen {
     selected: usize,
     has_more: bool,
     confirming_delete: bool,
+    sync_log: Rc<RefCell<SyncLog>>,
 }
 
 impl DrinkLogScreen {
-    pub fn new() -> Result<Self, duckdb::Error> {
+    pub fn new(sync_log: Rc<RefCell<SyncLog>>) -> Result<Self, duckdb::Error> {
         let mut screen = Self {
             drinks: Vec::new(),
             offset: 0,
             selected: 0,
             has_more: true,
             confirming_delete: false,
+            sync_log,
         };
         screen.load_more()?;
         Ok(screen)
@@ -43,7 +49,7 @@ impl DrinkLogScreen {
         }
 
         let db = DbConnection::open("cuppa.db")?;
-        let repo = DrinkRepository::new(db)?;
+        let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
 
         let new_drinks = repo.get_drinks_paginated(self.offset, PAGE_SIZE)?;
 
@@ -81,7 +87,7 @@ impl DrinkLogScreen {
         let drink = &self.drinks[self.selected];
         if let Some(id) = drink.id {
             let db = DbConnection::open("cuppa.db")?;
-            let repo = DrinkRepository::new(db)?;
+            let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
             repo.delete_drink(id)?;
             self.drinks.remove(self.selected);
             if self.selected >= self.drinks.len() && self.selected > 0 {

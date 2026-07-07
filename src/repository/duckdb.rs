@@ -1,6 +1,11 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use chrono::{DateTime, Utc, Duration, Local, TimeZone};
 
 use crate::repository::{connection::DbConnection, DrinkRecord};
+use crate::sync::log::SyncLog;
+use crate::sync::ops::SyncOp;
 
 pub struct DrinkFilter {
     pub limit: Option<usize>,
@@ -28,13 +33,20 @@ impl DrinkFilter {
 
 pub struct DrinkRepository {
     db: DbConnection,
+    sync_log: Option<Rc<RefCell<SyncLog>>>,
 }
 
 pub const CAFFEINE_HALF_LIFE_HOURS: f64 = 5.0;
 
 impl DrinkRepository {
     pub fn new(db: DbConnection) -> duckdb::Result<Self> {
-        let repo = Self { db };
+        let repo = Self { db, sync_log: None };
+        repo.init_schema()?;
+        Ok(repo)
+    }
+
+    pub fn with_sync_log(db: DbConnection, sync_log: Rc<RefCell<SyncLog>>) -> duckdb::Result<Self> {
+        let repo = Self { db, sync_log: Some(sync_log) };
         repo.init_schema()?;
         Ok(repo)
     }
@@ -62,6 +74,15 @@ impl DrinkRepository {
             "INSERT INTO drinks (drink_name, caffeine_mg, consumed_at) VALUES (?, ?, ?)",
             &[&drink_name as &dyn duckdb::ToSql, &caffeine_mg, &consumed_at.to_rfc3339()],
         )?;
+
+        if let Some(ref sync_log) = self.sync_log {
+            sync_log.borrow_mut().track(SyncOp::add_drink(
+                drink_name.to_string(),
+                caffeine_mg,
+                consumed_at,
+            ));
+        }
+
         Ok(())
     }
 
@@ -126,7 +147,27 @@ impl DrinkRepository {
     }
 
     pub fn delete_drink(&self, id: i64) -> duckdb::Result<usize> {
-        self.db.execute("DELETE FROM drinks WHERE id = ?", &[&id as &dyn duckdb::ToSql])
+        // Get drink info before deleting for sync log
+        let drink_info: Option<(String, DateTime<Utc>)> = self.db.query_row(
+            "SELECT drink_name, consumed_at FROM drinks WHERE id = ?",
+            &[&id as &dyn duckdb::ToSql],
+            |row| {
+                let consumed_at_str: String = row.get(1)?;
+                let consumed_at = parse_duckdb_timestamp(&consumed_at_str)
+                    .unwrap_or_else(|_| Utc::now());
+                Ok((row.get::<_, String>(0)?, consumed_at))
+            }
+        ).ok();
+
+        let result = self.db.execute("DELETE FROM drinks WHERE id = ?", &[&id as &dyn duckdb::ToSql]);
+
+        if let (Some(sync_log), Some((name, consumed_at))) = (&self.sync_log, drink_info) {
+            if result.is_ok() {
+                sync_log.borrow_mut().track(SyncOp::delete_drink(name, consumed_at));
+            }
+        }
+
+        result
     }
 
     pub fn generate_caffeine_series(&self) -> duckdb::Result<Vec<(DateTime<Utc>, f64)>> {

@@ -7,3 +7,4 @@ pub mod home;
 pub mod popover;
 pub mod screen;
 pub mod settings;
+pub mod syncing;

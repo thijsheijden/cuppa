@@ -15,9 +15,10 @@ use crate::repository::connection::DbConnection;
 
 fn main() -> io::Result<()> {
     let db = DbConnection::open("cuppa.db").expect("Failed to open database");
-    let home = HomeController::new(db).expect("Failed to initialize controller");
+    let mut app = AppController::new().expect("Failed to initialize sync log");
+    let sync_log = app.sync_log();
+    let home = HomeController::new(db, sync_log).expect("Failed to initialize controller");
 
-    let mut app = AppController::new();
     app.push_screen(Box::new(home));
 
     let mut terminal = ratatui::init();

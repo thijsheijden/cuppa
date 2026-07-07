@@ -3,17 +3,27 @@ use ratatui::{
     prelude::*,
 };
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::controller::screen::{AppAction, Screen};
+use crate::controller::syncing::SyncingScreen;
+use crate::sync::log::SyncLog;
 
 pub struct AppController {
     screen_stack: Vec<Box<dyn Screen>>,
+    sync_log: Rc<RefCell<SyncLog>>,
 }
 
 impl AppController {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> std::io::Result<Self> {
+        let sync_log = Rc::new(RefCell::new(
+            SyncLog::new("/Users/thijsheijden/Developer/rust/cuppa/synced-logfiles")?
+        ));
+        Ok(Self {
             screen_stack: Vec::new(),
-        }
+            sync_log,
+        })
     }
 
     pub fn push_screen(&mut self, screen: Box<dyn Screen>) {
@@ -30,12 +40,16 @@ impl AppController {
                 if key.kind == ratatui::crossterm::event::KeyEventKind::Press {
                     // Global Ctrl+C shortcut
                     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+                        self.show_syncing_and_export(&mut terminal)?;
                         return Ok(());
                     }
 
                     let action = self.handle_input(key);
                     match action {
-                        AppAction::Quit => return Ok(()),
+                        AppAction::Quit => {
+                            self.show_syncing_and_export(&mut terminal)?;
+                            return Ok(());
+                        }
                         AppAction::Continue => {}
                         AppAction::PushScreen(screen) => self.push_screen(screen),
                         AppAction::PopScreen => {
@@ -51,6 +65,26 @@ impl AppController {
                 }
             }
         }
+    }
+
+    fn show_syncing_and_export(&mut self, terminal: &mut Terminal<impl Backend>) -> std::io::Result<()> {
+        // Only show syncing if there are operations to export
+        if self.sync_log.borrow().session_count() == 0 {
+            return Ok(());
+        }
+
+        // Render the syncing popover
+        terminal.draw(|frame| {
+            self.render(frame);
+            // Render syncing screen on top
+            let syncing = SyncingScreen::new();
+            syncing.render(frame);
+        })?;
+
+        // Perform the export
+        let _ = self.sync_log.borrow_mut().export();
+
+        Ok(())
     }
 
     fn render(&self, frame: &mut Frame) {
@@ -78,5 +112,10 @@ impl AppController {
             }
             _ => AppAction::Continue,
         }
+    }
+
+    /// Get a shared clone of the sync log.
+    pub fn sync_log(&self) -> Rc<RefCell<SyncLog>> {
+        Rc::clone(&self.sync_log)
     }
 }

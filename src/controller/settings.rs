@@ -10,7 +10,7 @@ use ratatui::{
 
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
-use crate::entity::setting::{Setting, SettingType, SETTING_BEDTIME, SETTING_CAFFEINE_MG_AT_BEDTIME};
+use crate::entity::setting::{Setting, SettingType, SETTING_BEDTIME, SETTING_CAFFEINE_MG_AT_BEDTIME, SETTING_SYNC_REMOTE_URL};
 use crate::repository::connection::DbConnection;
 use crate::repository::setting::SettingRepository;
 
@@ -18,11 +18,13 @@ use crate::repository::setting::SettingRepository;
 enum FocusedField {
     Bedtime,
     CaffeineMg,
+    SyncRemoteUrl,
 }
 
 pub struct SettingsScreen {
     bedtime: String,
     caffeine_mg: String,
+    sync_remote_url: String,
     bedtime_valid: bool,
     caffeine_mg_valid: bool,
     focused: FocusedField,
@@ -46,12 +48,17 @@ impl SettingsScreen {
             .map(|s| s.value)
             .unwrap_or_else(|| "50".to_string());
 
+        let sync_remote_url = repo
+            .get_sync_remote_url()?
+            .unwrap_or_default();
+
         let bedtime_valid = Self::validate_bedtime(&bedtime);
         let caffeine_mg_valid = Self::validate_caffeine_mg(&caffeine_mg);
 
         Ok(Self {
             bedtime,
             caffeine_mg,
+            sync_remote_url,
             bedtime_valid,
             caffeine_mg_valid,
             focused: FocusedField::Bedtime,
@@ -102,6 +109,8 @@ impl SettingsScreen {
         let caffeine_mg = self.caffeine_mg.parse::<i32>().unwrap();
         repo.set_caffeine_mg_at_bedtime(caffeine_mg)?;
 
+        repo.set_sync_remote_url(&self.sync_remote_url)?;
+
         self.saved = true;
         Ok(())
     }
@@ -109,7 +118,8 @@ impl SettingsScreen {
     fn cycle_focus(&mut self) {
         self.focused = match self.focused {
             FocusedField::Bedtime => FocusedField::CaffeineMg,
-            FocusedField::CaffeineMg => FocusedField::Bedtime,
+            FocusedField::CaffeineMg => FocusedField::SyncRemoteUrl,
+            FocusedField::SyncRemoteUrl => FocusedField::Bedtime,
         };
     }
 
@@ -156,14 +166,30 @@ impl SettingsScreen {
             Some("Invalid number. Must be >= 0".to_string())
         };
     }
+
+    fn handle_sync_url_input(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Backspace => {
+                self.sync_remote_url.pop();
+                self.saved = false;
+            }
+            KeyCode::Char(c) => {
+                if self.sync_remote_url.len() < 120 {
+                    self.sync_remote_url.push(c);
+                    self.saved = false;
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 impl Screen for SettingsScreen {
     fn render(&self, frame: &mut Frame) {
         let area = frame.area();
 
-        let popup_width = 50u16.min(area.width.saturating_sub(4));
-        let popup_height = 16u16.min(area.height.saturating_sub(4));
+        let popup_width = 60u16.min(area.width.saturating_sub(4));
+        let popup_height = 20u16.min(area.height.saturating_sub(4));
 
         let horizontal = (area.width.saturating_sub(popup_width)) / 2;
         let vertical = (area.height.saturating_sub(popup_height)) / 2;
@@ -195,6 +221,7 @@ impl Screen for SettingsScreen {
                 Constraint::Length(1), // Bedtime error
                 Constraint::Length(3), // Caffeine mg input
                 Constraint::Length(1), // Caffeine mg error
+                Constraint::Length(3), // Sync remote URL input
                 Constraint::Length(1), // Spacer
                 Constraint::Length(1), // Saved message
                 Constraint::Length(1), // Footer
@@ -265,19 +292,48 @@ impl Screen for SettingsScreen {
             frame.render_widget(error_widget, layout[3]);
         }
 
+        // Sync remote URL field
+        let sync_focused = self.focused == FocusedField::SyncRemoteUrl;
+        let sync_border_color = if sync_focused {
+            Color::Yellow
+        } else {
+            Color::Gray
+        };
+
+        let sync_display = if self.sync_remote_url.is_empty() {
+            "(none)".to_string()
+        } else {
+            self.sync_remote_url.clone()
+        };
+
+        let sync_label = if sync_focused {
+            format!("> Git sync URL: {}", sync_display)
+        } else {
+            format!("  Git sync URL: {}", sync_display)
+        };
+
+        let sync_widget = Paragraph::new(sync_label)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(sync_border_color)),
+            )
+            .style(Style::default().fg(if sync_focused { Color::Yellow } else { Color::White }));
+        frame.render_widget(sync_widget, layout[4]);
+
         // Saved message
         if self.saved {
             let saved_widget = Paragraph::new("✓ Saved!")
                 .style(Style::default().fg(Color::Green))
                 .alignment(Alignment::Center);
-            frame.render_widget(saved_widget, layout[5]);
+            frame.render_widget(saved_widget, layout[6]);
         }
 
         // Footer
         let footer = Paragraph::new("<Tab> Switch field  <Esc>/<q> Save & Close")
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center);
-        frame.render_widget(footer, layout[6]);
+        frame.render_widget(footer, layout[7]);
     }
 
     fn handle_input(&mut self, key: KeyEvent) -> AppAction {
@@ -295,12 +351,14 @@ impl Screen for SettingsScreen {
                 match self.focused {
                     FocusedField::Bedtime => self.handle_bedtime_input(key),
                     FocusedField::CaffeineMg => self.handle_caffeine_mg_input(key),
+                    FocusedField::SyncRemoteUrl => self.handle_sync_url_input(key),
                 }
             }
             KeyCode::Char(c) => {
                 match self.focused {
                     FocusedField::Bedtime => self.handle_bedtime_input(key),
                     FocusedField::CaffeineMg => self.handle_caffeine_mg_input(key),
+                    FocusedField::SyncRemoteUrl => self.handle_sync_url_input(key),
                 }
             }
             _ => {}

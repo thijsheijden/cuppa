@@ -1,6 +1,7 @@
 mod controller;
 mod entity;
 mod repository;
+mod sync;
 mod view;
 
 use std::io;

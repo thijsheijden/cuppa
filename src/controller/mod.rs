@@ -6,5 +6,6 @@ pub mod error_screen;
 pub mod home;
 pub mod popover;
 pub mod screen;
+pub mod set_timestamp;
 pub mod settings;
 pub mod syncing;

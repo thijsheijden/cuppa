@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
@@ -15,6 +15,7 @@ use chrono::Utc;
 use crate::controller::error_screen::ErrorScreen;
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
+use crate::controller::set_timestamp::SetTimestampScreen;
 use crate::repository::{
     connection::DbConnection,
     drink_type::DrinkTypeRepository,
@@ -90,7 +91,7 @@ impl AddDrinkScreen {
         }
     }
 
-    fn log_selected_drink(&self) -> Result<(), duckdb::Error> {
+    fn log_selected_drink(&self, consumed_at: chrono::DateTime<Utc>) -> Result<(), duckdb::Error> {
         if self.filtered_types.is_empty() {
             return Ok(());
         }
@@ -99,8 +100,12 @@ impl AddDrinkScreen {
 
         let db = DbConnection::open("cuppa.db")?;
         let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
-        repo.add_drink(name, *caffeine_mg, Utc::now())?;
+        repo.add_drink(name, *caffeine_mg, consumed_at)?;
         Ok(())
+    }
+
+    fn log_selected_drink_now(&self) -> Result<(), duckdb::Error> {
+        self.log_selected_drink(Utc::now())
     }
 
     fn handle_log_result(&self, result: Result<(), duckdb::Error>) -> AppAction {
@@ -196,7 +201,7 @@ impl Screen for AddDrinkScreen {
             inner.width,
             1,
         );
-        let footer = Paragraph::new("</> Search  <a> Add Custom  <Enter> Log  <Esc> Cancel")
+        let footer = Paragraph::new("</> Search  <a> Add Custom  <t> Set Time  <Enter> Log Now  <Esc> Cancel")
             .style(Style::default().fg(Color::DarkGray));
         frame.render_widget(footer, footer_area);
     }
@@ -220,7 +225,7 @@ impl Screen for AddDrinkScreen {
                 }
                 KeyCode::Enter => {
                     self.search_focused = false;
-                    let result = self.log_selected_drink();
+                    let result = self.log_selected_drink_now();
                     return self.handle_log_result(result);
                 }
                 _ => {}
@@ -239,8 +244,22 @@ impl Screen for AddDrinkScreen {
                 self.select_previous();
             }
             KeyCode::Enter => {
-                let result = self.log_selected_drink();
+                let result = self.log_selected_drink_now();
                 return self.handle_log_result(result);
+            }
+            KeyCode::Char('t') => {
+                if self.filtered_types.is_empty() {
+                    return AppAction::Continue;
+                }
+                let index = self.selected_index();
+                let (_key, name, caffeine_mg) = self.filtered_types[index].clone();
+                let timestamp_screen = SetTimestampScreen::new(
+                    name,
+                    caffeine_mg,
+                    Rc::clone(&self.sync_log),
+                );
+                let popover = PopoverScreen::new(Box::new(timestamp_screen), 50, 14);
+                return AppAction::PushScreen(Box::new(popover));
             }
             KeyCode::Char('a') => {
                 let custom_screen = crate::controller::add_custom_drink::AddCustomDrinkScreen::new();

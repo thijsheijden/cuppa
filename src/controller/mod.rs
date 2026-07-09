@@ -8,4 +8,5 @@ pub mod popover;
 pub mod screen;
 pub mod set_timestamp;
 pub mod settings;
+pub mod sync;
 pub mod syncing;

@@ -12,7 +12,10 @@ use crate::controller::error_screen::ErrorScreen;
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::Screen;
 use crate::controller::syncing::SyncingScreen;
+use crate::repository::connection::DbConnection;
+use crate::repository::setting::SettingRepository;
 use crate::sync::log::SyncLog;
+use crate::sync::ops::PendingOp;
 
 pub struct SyncController {
     sync_log: Rc<RefCell<SyncLog>>,
@@ -27,6 +30,25 @@ pub enum SyncResult {
 impl SyncController {
     pub fn new(sync_log: Rc<RefCell<SyncLog>>) -> Self {
         Self { sync_log }
+    }
+
+    /// Read missing log entries from the sync repository that have not yet been
+    /// applied to the local database. Returns a list of `(sequence_number, PendingOp)`
+    /// pairs, ordered by sequence number, ready to be executed.
+    pub fn read_missing_logs(&self,
+    ) -> Result<Vec<(u64, PendingOp)>, Box<dyn std::error::Error>> {
+        let last_seq = {
+            let db = DbConnection::open("cuppa.db")?;
+            let settings = SettingRepository::new(db)?;
+            settings.get_sync_last_seq()?
+        };
+
+        let ops = {
+            let sync_log = self.sync_log.borrow();
+            sync_log.read_missing(last_seq)?
+        };
+
+        Ok(ops)
     }
 
     /// Attempt to sync and return whether the app should proceed to close or stay open.

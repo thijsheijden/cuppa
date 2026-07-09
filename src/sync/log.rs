@@ -2,7 +2,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use crate::sync::ops::SyncOp;
+use crate::sync::ops::{PendingOp, SyncOp};
 
 pub const RECORDS_PER_FILE: usize = 500;
 
@@ -173,6 +173,51 @@ impl SyncLog {
     }
 
     /// Read all operations from all log files, starting from `from_seq` (inclusive).
+    /// Returns `(seq, PendingOp)` pairs ready to be applied to the local database.
+    pub fn read_missing(&self, from_seq: u64) -> std::io::Result<Vec<(u64, PendingOp)>> {
+        let mut results = Vec::new();
+
+        let mut entries = fs::read_dir(&self.dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name();
+                let name = name.to_string_lossy();
+                name.ends_with(".jsonl")
+            })
+            .collect::<Vec<_>>();
+
+        entries.sort_by_key(|e| e.file_name());
+
+        for entry in entries {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let min_seq = name.trim_end_matches(".jsonl").parse::<u64>()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+            let file = File::open(&path)?;
+            let reader = BufReader::new(file);
+
+            for (i, line) in reader.lines().enumerate() {
+                let line = line?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let seq = min_seq + i as u64;
+                if seq < from_seq {
+                    continue;
+                }
+                let op: SyncOp = serde_json::from_str(&line).map_err(|e| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+                })?;
+                results.push((seq, PendingOp::from(op)));
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Read all operations from all log files, starting from `from_seq` (inclusive).
+    /// Returns `(seq, SyncOp)` pairs — kept for internal/testing use.
     pub fn read_from(&self, from_seq: u64) -> std::io::Result<Vec<(u64, SyncOp)>> {
         let mut results = Vec::new();
 

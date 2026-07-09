@@ -80,6 +80,7 @@ impl Setting {
 pub const SETTING_BEDTIME: &str = "bedtime";
 pub const SETTING_CAFFEINE_MG_AT_BEDTIME: &str = "caffeine_mg_at_bedtime";
 pub const SETTING_SYNC_REMOTE_URL: &str = "sync_remote_url";
+pub const SETTING_SYNC_LAST_SEQ: &str = "sync_last_seq";
 
 /// Default settings
 pub fn default_settings() -> Vec<Setting> {
@@ -87,5 +88,6 @@ pub fn default_settings() -> Vec<Setting> {
         Setting::new(SETTING_BEDTIME, "23:00", SettingType::Time),
         Setting::new(SETTING_CAFFEINE_MG_AT_BEDTIME, "50", SettingType::Int),
         Setting::new(SETTING_SYNC_REMOTE_URL, "", SettingType::String),
+        Setting::new(SETTING_SYNC_LAST_SEQ, "0", SettingType::Int),
     ]
 }

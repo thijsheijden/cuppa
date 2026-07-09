@@ -1,6 +1,6 @@
 use chrono::NaiveTime;
 
-use crate::entity::setting::{Setting, SettingType, SETTING_BEDTIME, SETTING_CAFFEINE_MG_AT_BEDTIME, SETTING_SYNC_REMOTE_URL};
+use crate::entity::setting::{Setting, SettingType, SETTING_BEDTIME, SETTING_CAFFEINE_MG_AT_BEDTIME, SETTING_SYNC_REMOTE_URL, SETTING_SYNC_LAST_SEQ};
 use crate::repository::connection::DbConnection;
 
 pub struct SettingRepository {
@@ -151,6 +151,19 @@ impl SettingRepository {
     pub fn set_sync_remote_url(&self, url: &str) -> duckdb::Result<()> {
         let mut setting = Setting::new(SETTING_SYNC_REMOTE_URL, url.trim(), SettingType::String);
         setting.value = url.trim().to_string();
+        self.set_setting(&setting)
+    }
+
+    pub fn get_sync_last_seq(&self) -> duckdb::Result<u64> {
+        match self.get_setting(SETTING_SYNC_LAST_SEQ)? {
+            Some(s) => Ok(s.as_int().unwrap_or(0) as u64),
+            None => Ok(0),
+        }
+    }
+
+    pub fn set_sync_last_seq(&self, seq: u64) -> duckdb::Result<()> {
+        let mut setting = Setting::new(SETTING_SYNC_LAST_SEQ, "", SettingType::Int);
+        setting.set_int(seq as i32);
         self.set_setting(&setting)
     }
 }

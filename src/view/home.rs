@@ -10,7 +10,7 @@ use ratatui::{
 use crate::controller::home::HomeController;
 
 const VIEW_WIDTH: u16 = 87;
-const VIEW_HEIGHT: u16 = 26;
+const VIEW_HEIGHT: u16 = 27; // +1 for sync status bar
 const CHART_HEIGHT: u16 = 14;
 
 pub fn render(frame: &mut Frame, controller: &HomeController) {
@@ -24,12 +24,14 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
             Constraint::Length(CHART_HEIGHT),
             Constraint::Min(0),
             Constraint::Length(1),
+            Constraint::Length(1), // sync status bar
         ])
         .split(view_area);
 
     let top = main_layout[0];
     let bottom = main_layout[1];
     let footer = main_layout[2];
+    let sync_bar = main_layout[3];
 
     render_caffeine_chart(frame, top, controller);
 
@@ -101,6 +103,24 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
     let footer_widget = Paragraph::new(footer_text)
         .alignment(Alignment::Center);
     frame.render_widget(footer_widget, footer);
+
+    // Render sync status bar
+    let sync_color = match controller.sync_status {
+        crate::sync::background::SyncStatus::Idle => Color::DarkGray,
+        crate::sync::background::SyncStatus::Pulling => Color::Cyan,
+        crate::sync::background::SyncStatus::Applying => Color::Yellow,
+        crate::sync::background::SyncStatus::Done => Color::Green,
+        crate::sync::background::SyncStatus::Error => Color::Red,
+    };
+    let sync_text = if controller.sync_message.is_empty() {
+        controller.sync_status.message().to_string()
+    } else {
+        controller.sync_message.clone()
+    };
+    let sync_widget = Paragraph::new(sync_text)
+        .style(Style::default().fg(sync_color))
+        .alignment(Alignment::Center);
+    frame.render_widget(sync_widget, sync_bar);
 }
 
 fn render_caffeine_chart(frame: &mut Frame, area: Rect, controller: &HomeController) {

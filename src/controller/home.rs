@@ -12,6 +12,7 @@ use crate::controller::screen::{AppAction, Screen};
 use crate::repository::connection::DbConnection;
 use crate::repository::duckdb::{DrinkFilter, DrinkRepository};
 use crate::repository::setting::SettingRepository;
+use crate::sync::background::{BackgroundSyncState, SyncStatus};
 use crate::sync::log::SyncLog;
 
 pub struct HomeController {
@@ -24,11 +25,18 @@ pub struct HomeController {
     pub current_time: String,
     pub bedtime: String,
     pub bedtime_caffeine_mg: i32,
+    pub sync_status: SyncStatus,
+    pub sync_message: String,
     sync_log: Rc<RefCell<SyncLog>>,
+    background_sync_state: Option<std::sync::Arc<tokio::sync::Mutex<BackgroundSyncState>>>,
 }
 
 impl HomeController {
-    pub fn new(db: DbConnection, sync_log: Rc<RefCell<SyncLog>>) -> DuckResult<Self> {
+    pub fn new(
+        db: DbConnection,
+        sync_log: Rc<RefCell<SyncLog>>,
+        background_sync_state: Option<std::sync::Arc<tokio::sync::Mutex<BackgroundSyncState>>>,
+    ) -> DuckResult<Self> {
         let repo = DrinkRepository::with_sync_log(db, Rc::clone(&sync_log))?;
         let current_caffeine_level = repo.current_caffeine_level()?;
         let today_total_caffeine = repo.get_today_total_caffeine()?;
@@ -50,7 +58,10 @@ impl HomeController {
             current_time,
             bedtime,
             bedtime_caffeine_mg,
+            sync_status: SyncStatus::Idle,
+            sync_message: String::new(),
             sync_log,
+            background_sync_state,
         })
     }
 
@@ -150,11 +161,20 @@ impl HomeController {
         self.caffeine_series = Self::load_caffeine_series()?;
         self.sleep_time = Self::load_sleep_time()?;
         self.current_time = Local::now().format("%H:%M").to_string();
-        
+
         let (bedtime, bedtime_caffeine_mg) = Self::load_settings()?;
         self.bedtime = bedtime;
         self.bedtime_caffeine_mg = bedtime_caffeine_mg;
-        
+
+        // Update sync status from background task if available
+        if let Some(ref state) = self.background_sync_state {
+            // Try to get the lock without blocking — use try_lock
+            if let Ok(guard) = state.try_lock() {
+                self.sync_status = guard.status;
+                self.sync_message = guard.message.clone();
+            }
+        }
+
         Ok(())
     }
 }
@@ -165,6 +185,14 @@ impl Screen for HomeController {
     }
 
     fn handle_input(&mut self, key: KeyEvent) -> AppAction {
+        // Poll background sync state on every input event to keep UI updated
+        if let Some(ref state) = self.background_sync_state {
+            if let Ok(guard) = state.try_lock() {
+                self.sync_status = guard.status;
+                self.sync_message = guard.message.clone();
+            }
+        }
+
         match key.code {
             KeyCode::Char('q') => AppAction::Quit,
             KeyCode::Char('a') => {

@@ -28,6 +28,7 @@ pub struct HomeController {
     pub bedtime_caffeine_mg: i32,
     pub sync_status: SyncStatus,
     pub sync_message: String,
+    pub sync_spinner_frame: usize,
     sync_log: Rc<RefCell<SyncLog>>,
     background_sync_state: Option<std::sync::Arc<tokio::sync::Mutex<BackgroundSyncState>>>,
 }
@@ -61,6 +62,7 @@ impl HomeController {
             bedtime_caffeine_mg,
             sync_status: SyncStatus::Idle,
             sync_message: String::new(),
+            sync_spinner_frame: 0,
             sync_log,
             background_sync_state,
         })
@@ -245,6 +247,11 @@ impl Screen for HomeController {
                 self.sync_status = guard.status;
                 self.sync_message = guard.message.clone();
             }
+        }
+
+        // Advance spinner frame when syncing
+        if self.sync_status == SyncStatus::Pulling || self.sync_status == SyncStatus::Applying {
+            self.sync_spinner_frame = self.sync_spinner_frame.wrapping_add(1);
         }
 
         match key.code {

@@ -104,7 +104,8 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
         .alignment(Alignment::Center);
     frame.render_widget(footer_widget, footer);
 
-    // Render sync status bar
+    // Render sync status bar with spinner when active
+    const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     let sync_color = match controller.sync_status {
         crate::sync::background::SyncStatus::Idle => Color::DarkGray,
         crate::sync::background::SyncStatus::Pulling => Color::Cyan,
@@ -117,8 +118,20 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
     } else {
         controller.sync_message.clone()
     };
-    let sync_widget = Paragraph::new(sync_text)
-        .style(Style::default().fg(sync_color))
+    let spinner = if controller.sync_status == crate::sync::background::SyncStatus::Pulling
+        || controller.sync_status == crate::sync::background::SyncStatus::Applying
+    {
+        let frame = controller.sync_spinner_frame % SPINNER_FRAMES.len();
+        SPINNER_FRAMES[frame]
+    } else {
+        ""
+    };
+    let sync_line = Line::from(vec![
+        Span::styled(spinner, Style::default().fg(sync_color)),
+        Span::raw(" "),
+        Span::styled(sync_text, Style::default().fg(sync_color)),
+    ]);
+    let sync_widget = Paragraph::new(sync_line)
         .alignment(Alignment::Center);
     frame.render_widget(sync_widget, sync_bar);
 }

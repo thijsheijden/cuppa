@@ -9,6 +9,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use crate::controller::add_drink::AddDrinkScreen;
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
+use crate::paths::db_path;
 use crate::repository::connection::DbConnection;
 use crate::repository::duckdb::{DrinkFilter, DrinkRepository};
 use crate::repository::setting::SettingRepository;
@@ -69,7 +70,7 @@ impl HomeController {
     }
 
     fn load_settings() -> DuckResult<(String, i32)> {
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = SettingRepository::new(db)?;
         
         let bedtime = repo
@@ -86,7 +87,7 @@ impl HomeController {
     }
 
     fn load_todays_drinks() -> DuckResult<Vec<(String, String)>> {
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkRepository::new(db)?;
 
         let today_start = Local::now()
@@ -115,7 +116,7 @@ impl HomeController {
     }
 
     fn load_caffeine_series() -> DuckResult<Vec<(String, f64)>> {
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkRepository::new(db)?;
         let series = repo.generate_caffeine_series()?;
 
@@ -131,7 +132,7 @@ impl HomeController {
     }
 
     fn load_sleep_time() -> DuckResult<Option<String>> {
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkRepository::new(db)?;
         match repo.time_until_threshold(50.0)? {
             Some(dt) => {
@@ -159,7 +160,7 @@ impl HomeController {
         // If background sync has pulled new data, apply pending ops to the DB
         self.apply_pending_sync_ops()?;
 
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
         self.current_caffeine_level = repo.current_caffeine_level()?;
         self.today_total_caffeine = repo.get_today_total_caffeine()?;
@@ -187,7 +188,7 @@ impl HomeController {
     /// Apply pending sync operations from the log files to the local database.
     /// This is called from refresh() when the background sync has pulled new data.
     fn apply_pending_sync_ops(&mut self) -> DuckResult<()> {
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let settings = SettingRepository::new(db)?;
         let last_seq = settings.get_sync_last_seq()?;
 
@@ -202,7 +203,7 @@ impl HomeController {
             return Ok(());
         }
 
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkRepository::new(db)?;
         let mut max_seq = last_seq;
 
@@ -227,7 +228,7 @@ impl HomeController {
         }
 
         // Update cursor to the highest applied sequence + 1
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let settings = SettingRepository::new(db)?;
         let _ = settings.set_sync_last_seq(max_seq + 1);
 

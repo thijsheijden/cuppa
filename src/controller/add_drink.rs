@@ -21,6 +21,7 @@ use crate::repository::{
     drink_type::DrinkTypeRepository,
     duckdb::DrinkRepository,
 };
+use crate::paths::db_path;
 use crate::sync::log::SyncLog;
 
 pub struct AddDrinkScreen {
@@ -34,7 +35,7 @@ pub struct AddDrinkScreen {
 
 impl AddDrinkScreen {
     pub fn new(sync_log: Rc<RefCell<SyncLog>>) -> Result<Self, duckdb::Error> {
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkTypeRepository::new(db)?;
         let drink_types = repo.get_drink_types_sorted_by_consumption()?;
         let filtered_types = drink_types.clone();
@@ -98,7 +99,7 @@ impl AddDrinkScreen {
         let index = self.selected_index();
         let (_key, name, caffeine_mg) = &self.filtered_types[index];
 
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
         repo.add_drink(name, *caffeine_mg, consumed_at)?;
         Ok(())

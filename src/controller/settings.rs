@@ -11,6 +11,7 @@ use ratatui::{
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
 use crate::entity::setting::{Setting, SettingType, SETTING_BEDTIME, SETTING_CAFFEINE_MG_AT_BEDTIME, SETTING_SYNC_REMOTE_URL};
+use crate::paths::db_path;
 use crate::repository::connection::DbConnection;
 use crate::repository::setting::SettingRepository;
 
@@ -35,7 +36,7 @@ pub struct SettingsScreen {
 
 impl SettingsScreen {
     pub fn new() -> Result<Self, duckdb::Error> {
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = SettingRepository::new(db)?;
 
         let bedtime = repo
@@ -100,7 +101,7 @@ impl SettingsScreen {
             return Ok(());
         }
 
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = SettingRepository::new(db)?;
 
         let bedtime = NaiveTime::parse_from_str(&self.bedtime, "%H:%M").unwrap();

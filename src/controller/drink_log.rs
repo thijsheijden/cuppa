@@ -13,6 +13,7 @@ use ratatui::{
 use chrono::{Local, TimeZone, Utc};
 
 use crate::controller::screen::{AppAction, Screen};
+use crate::paths::db_path;
 use crate::repository::connection::DbConnection;
 use crate::repository::duckdb::DrinkRepository;
 use crate::repository::DrinkRecord;
@@ -48,7 +49,7 @@ impl DrinkLogScreen {
             return Ok(());
         }
 
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
 
         let new_drinks = repo.get_drinks_paginated(self.offset, PAGE_SIZE)?;
@@ -86,7 +87,7 @@ impl DrinkLogScreen {
         }
         let drink = &self.drinks[self.selected];
         if let Some(id) = drink.id {
-            let db = DbConnection::open("cuppa.db")?;
+            let db = DbConnection::open(&db_path())?;
             let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
             repo.delete_drink(id)?;
             self.drinks.remove(self.selected);

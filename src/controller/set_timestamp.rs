@@ -16,6 +16,7 @@ use crate::repository::{
     connection::DbConnection,
     duckdb::DrinkRepository,
 };
+use crate::paths::db_path;
 use crate::sync::log::SyncLog;
 
 use std::cell::RefCell;
@@ -67,7 +68,7 @@ impl SetTimestampScreen {
             None => return Ok(()),
         };
 
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
         repo.add_drink(&self.drink_name, self.caffeine_mg, consumed_at)?;
         Ok(())

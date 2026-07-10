@@ -14,6 +14,7 @@ use crate::repository::{
     connection::DbConnection,
     drink_type::DrinkTypeRepository,
 };
+use crate::paths::db_path;
 
 const ESPRESSO_MG_PER_SHOT: i32 = 63;
 
@@ -59,7 +60,7 @@ impl AddCustomDrinkScreen {
             return Ok(());
         }
 
-        let db = DbConnection::open("cuppa.db")?;
+        let db = DbConnection::open(&db_path())?;
         let repo = DrinkTypeRepository::new(db)?;
         repo.add_custom_drink(&self.name, mg)?;
         Ok(())

@@ -14,6 +14,7 @@ use crate::repository::duckdb::{DrinkFilter, DrinkRepository};
 use crate::repository::setting::SettingRepository;
 use crate::sync::background::{BackgroundSyncState, SyncStatus};
 use crate::sync::log::SyncLog;
+use crate::sync::ops::PendingOp;
 
 pub struct HomeController {
     pub current_caffeine_level: f64,
@@ -153,6 +154,9 @@ impl HomeController {
     }
 
     pub fn refresh(&mut self) -> DuckResult<()> {
+        // If background sync has pulled new data, apply pending ops to the DB
+        self.apply_pending_sync_ops()?;
+
         let db = DbConnection::open("cuppa.db")?;
         let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
         self.current_caffeine_level = repo.current_caffeine_level()?;
@@ -174,6 +178,56 @@ impl HomeController {
                 self.sync_message = guard.message.clone();
             }
         }
+
+        Ok(())
+    }
+
+    /// Apply pending sync operations from the log files to the local database.
+    /// This is called from refresh() when the background sync has pulled new data.
+    fn apply_pending_sync_ops(&mut self) -> DuckResult<()> {
+        let db = DbConnection::open("cuppa.db")?;
+        let settings = SettingRepository::new(db)?;
+        let last_seq = settings.get_sync_last_seq()?;
+
+        // Read missing ops from log files (on the main thread, no async needed)
+        let sync_log = self.sync_log.borrow();
+        let pending = match sync_log.read_missing(last_seq) {
+            Ok(ops) => ops,
+            Err(_) => return Ok(()), // Silently ignore read errors
+        };
+
+        if pending.is_empty() {
+            return Ok(());
+        }
+
+        let db = DbConnection::open("cuppa.db")?;
+        let repo = DrinkRepository::new(db)?;
+        let mut max_seq = last_seq;
+
+        for (seq, op) in pending {
+            match op {
+                PendingOp::AddDrink { drink_name, caffeine_mg, consumed_at } => {
+                    // Check if already exists to avoid duplicates
+                    let exists = repo.get_drink_by_name_and_time(&drink_name, consumed_at)?.is_some();
+                    if !exists {
+                        if let Err(e) = repo.add_drink_sync(&drink_name, caffeine_mg, consumed_at) {
+                            eprintln!("Sync add failed: {}", e);
+                        }
+                    }
+                }
+                PendingOp::DeleteDrink { drink_name, consumed_at } => {
+                    if let Err(e) = repo.delete_drink_by_name_and_time(&drink_name, consumed_at) {
+                        eprintln!("Sync delete failed: {}", e);
+                    }
+                }
+            }
+            max_seq = seq;
+        }
+
+        // Update cursor to the highest applied sequence + 1
+        let db = DbConnection::open("cuppa.db")?;
+        let settings = SettingRepository::new(db)?;
+        let _ = settings.set_sync_last_seq(max_seq + 1);
 
         Ok(())
     }

@@ -57,7 +57,7 @@ impl BackgroundSync {
     }
 
     /// Spawn the background sync task on the given runtime handle.
-    /// This performs a git pull, reads missing logs, and returns the pending ops to be applied.
+    /// This performs a git pull and updates the shared state.
     pub fn spawn(&self, runtime: &tokio::runtime::Runtime, log_dir: std::path::PathBuf) {
         let state = Arc::clone(&self.state);
 
@@ -115,10 +115,16 @@ impl BackgroundSync {
                     if output.status.success() {
                         let mut s = state.lock().await;
                         s.status = SyncStatus::Applying;
+                        // git pull writes progress to stderr even on success;
+                        // use stdout for the actual result message.
                         s.message = if stdout.contains("Already up to date") {
                             "Already up to date".to_string()
-                        } else {
+                        } else if !stdout.trim().is_empty() {
                             format!("Pulled changes: {}", stdout.trim())
+                        } else if !stderr.trim().is_empty() {
+                            format!("Pulled changes: {}", stderr.trim())
+                        } else {
+                            "Pulled changes".to_string()
                         };
                     } else {
                         let mut s = state.lock().await;
@@ -135,15 +141,9 @@ impl BackgroundSync {
                 }
             }
 
-            // TODO: Apply pending ops here
-            // For now, just mark as done
-            {
-                let mut s = state.lock().await;
-                s.status = SyncStatus::Done;
-            }
-
-            // Clear the message after 5 seconds
-            sleep(Duration::from_secs(5)).await;
+            // Wait a moment so the user can see the "Applying" message,
+            // then clear it after 2.5 seconds.
+            sleep(Duration::from_millis(2500)).await;
             {
                 let mut s = state.lock().await;
                 s.status = SyncStatus::Idle;

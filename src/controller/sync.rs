@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::process::Command;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,6 +12,7 @@ use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::Screen;
 use crate::controller::syncing::SyncingScreen;
 use crate::repository::setting::SettingRepository;
+use crate::sync::git::GitRepo;
 use crate::sync::log::SyncLog;
 use crate::sync::ops::PendingOp;
 
@@ -178,60 +178,30 @@ impl SyncController {
         syncing.add_message("Git: opening repo...".to_string());
         self.draw_with_syncing(terminal, render_app, syncing)?;
 
-        // Open or init repo using git CLI
-        if !dir.join(".git").exists() {
-            syncing.add_message("Git: init repo...".to_string());
-            self.draw_with_syncing(terminal, render_app, syncing)?;
-            let output = Command::new("git")
-                .args(["init"])
-                .current_dir(&dir)
-                .output()?;
-            if !output.status.success() {
-                return Err(format!("git init failed: {}", String::from_utf8_lossy(&output.stderr)).into());
-            }
+        // Open or init repo
+        let remote_url: Option<String> = if dir.join(".git").exists() {
+            None
+        } else {
+            let settings = SettingRepository::new()?;
+            settings.get_sync_remote_url()?
+        };
+        let remote_url_ref = remote_url.as_deref();
 
-            // Create initial commit
-            let _ = Command::new("git")
-                .args(["config", "user.email", "sync@cuppa.app"])
-                .current_dir(&dir)
-                .output()?;
-            let _ = Command::new("git")
-                .args(["config", "user.name", "Cuppa Sync"])
-                .current_dir(&dir)
-                .output()?;
-            let output = Command::new("git")
-                .args(["commit", "--allow-empty", "-m", "Initial commit"])
-                .current_dir(&dir)
-                .output()?;
-            if !output.status.success() {
-                return Err(format!("git initial commit failed: {}", String::from_utf8_lossy(&output.stderr)).into());
-            }
-        }
+        let repo = GitRepo::open_or_init(&dir, remote_url_ref)?;
 
         syncing.add_message("Git: repo ready.".to_string());
         self.draw_with_syncing(terminal, render_app, syncing)?;
 
         // Check if remote exists
-        let remote_check = Command::new("git")
-            .args(["remote", "get-url", "origin"])
-            .current_dir(&dir)
-            .output()?;
-
-        if !remote_check.status.success() {
+        if !repo.has_remote()? {
             syncing.add_message("Git: reading remote URL from settings...".to_string());
             self.draw_with_syncing(terminal, render_app, syncing)?;
 
-            let settings = crate::repository::setting::SettingRepository::new()?;
+            let settings = SettingRepository::new()?;
             if let Some(url) = settings.get_sync_remote_url()? {
                 syncing.add_message(format!("Git: adding remote {}...", url));
                 self.draw_with_syncing(terminal, render_app, syncing)?;
-                let output = Command::new("git")
-                    .args(["remote", "add", "origin", &url])
-                    .current_dir(&dir)
-                    .output()?;
-                if !output.status.success() {
-                    return Err(format!("git remote add failed: {}", String::from_utf8_lossy(&output.stderr)).into());
-                }
+                repo.add_remote(&url)?;
             } else {
                 syncing.add_message("Git: no remote configured, skipping.".to_string());
                 self.draw_with_syncing(terminal, render_app, syncing)?;
@@ -245,23 +215,10 @@ impl SyncController {
         // Stage all changes
         syncing.add_message("Git: staging changes...".to_string());
         self.draw_with_syncing(terminal, render_app, syncing)?;
-
-        let output = Command::new("git")
-            .args(["add", "."])
-            .current_dir(&dir)
-            .output()?;
-        if !output.status.success() {
-            return Err(format!("git add failed: {}", String::from_utf8_lossy(&output.stderr)).into());
-        }
+        repo.add_all()?;
 
         // Check if there are changes to commit
-        let output = Command::new("git")
-            .args(["diff", "--cached", "--quiet"])
-            .current_dir(&dir)
-            .output()?;
-        let has_changes = !output.status.success();
-
-        if has_changes {
+        if repo.has_staged_changes()? {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
@@ -270,14 +227,7 @@ impl SyncController {
 
             syncing.add_message(format!("Git: committing '{}'...", message));
             self.draw_with_syncing(terminal, render_app, syncing)?;
-
-            let output = Command::new("git")
-                .args(["commit", "-m", &message])
-                .current_dir(&dir)
-                .output()?;
-            if !output.status.success() {
-                return Err(format!("git commit failed: {}", String::from_utf8_lossy(&output.stderr)).into());
-            }
+            repo.commit(&message)?;
         } else {
             syncing.add_message("Git: nothing to commit.".to_string());
             self.draw_with_syncing(terminal, render_app, syncing)?;
@@ -285,16 +235,7 @@ impl SyncController {
 
         syncing.add_message("Git: pushing to origin...".to_string());
         self.draw_with_syncing(terminal, render_app, syncing)?;
-
-        let output = Command::new("git")
-            .args(["push", "origin", "main"])
-            .current_dir(&dir)
-            .output()?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            return Err(format!("git push failed: stderr='{}' stdout='{}'", stderr, stdout).into());
-        }
+        repo.push()?;
 
         syncing.add_message("Git: push done.".to_string());
         self.draw_with_syncing(terminal, render_app, syncing)?;

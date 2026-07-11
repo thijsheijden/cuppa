@@ -1,7 +1,8 @@
-use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
+
+use crate::sync::git::GitRepo;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncStatus {
@@ -81,136 +82,51 @@ impl BackgroundSync {
                 s.message = "Pulling remote logs...".to_string();
             }
 
-            // If no git repo exists yet, initialise one and add the remote
-            if !log_dir.join(".git").exists() {
-                {
-                    let mut s = state.lock().await;
-                    s.message = "Git: init repo...".to_string();
-                }
-
-                let output = Command::new("git")
-                    .args(["init"])
-                    .current_dir(&log_dir)
-                    .output();
-
-                if let Ok(output) = output {
-                    if !output.status.success() {
-                        let mut s = state.lock().await;
-                        s.status = SyncStatus::Error;
-                        s.message = format!("git init failed: {}", String::from_utf8_lossy(&output.stderr));
-                        return;
-                    }
-                } else {
+            // Open or init the git repo, adding the remote if it's fresh
+            let repo = match GitRepo::open_or_init(&log_dir, Some(&remote_url)) {
+                Ok(repo) => repo,
+                Err(e) => {
                     let mut s = state.lock().await;
                     s.status = SyncStatus::Error;
-                    s.message = "git init failed".to_string();
+                    s.message = format!("Git repo init failed: {}", e);
                     return;
                 }
-
-                // Configure git user for commits
-                let _ = Command::new("git")
-                    .args(["config", "user.email", "sync@cuppa.app"])
-                    .current_dir(&log_dir)
-                    .output();
-                let _ = Command::new("git")
-                    .args(["config", "user.name", "Cuppa Sync"])
-                    .current_dir(&log_dir)
-                    .output();
-
-                // Add the remote
-                let output = Command::new("git")
-                    .args(["remote", "add", "origin", &remote_url])
-                    .current_dir(&log_dir)
-                    .output();
-
-                if let Ok(output) = output {
-                    if !output.status.success() {
-                        let mut s = state.lock().await;
-                        s.status = SyncStatus::Error;
-                        s.message = format!("git remote add failed: {}", String::from_utf8_lossy(&output.stderr));
-                        return;
-                    }
-                } else {
-                    let mut s = state.lock().await;
-                    s.status = SyncStatus::Error;
-                    s.message = "git remote add failed".to_string();
-                    return;
-                }
-
-                // Create initial commit so we have a branch to pull into
-                let output = Command::new("git")
-                    .args(["commit", "--allow-empty", "-m", "Initial commit"])
-                    .current_dir(&log_dir)
-                    .output();
-
-                if let Ok(output) = output {
-                    if !output.status.success() {
-                        let mut s = state.lock().await;
-                        s.status = SyncStatus::Error;
-                        s.message = format!("git initial commit failed: {}", String::from_utf8_lossy(&output.stderr));
-                        return;
-                    }
-                }
-            }
+            };
 
             // Check if remote exists
-            let remote_check = Command::new("git")
-                .args(["remote", "get-url", "origin"])
-                .current_dir(&log_dir)
-                .output();
-
-            match remote_check {
-                Ok(output) if !output.status.success() => {
+            let has_remote = match repo.has_remote() {
+                Ok(has) => has,
+                Err(_) => {
                     let mut s = state.lock().await;
                     s.status = SyncStatus::Error;
                     s.message = "Remote not found".to_string();
                     return;
                 }
-                Err(_) => {
-                    let mut s = state.lock().await;
-                    s.status = SyncStatus::Error;
-                    s.message = "Failed to check remote".to_string();
-                    return;
-                }
-                _ => {}
+            };
+
+            if !has_remote {
+                let mut s = state.lock().await;
+                s.status = SyncStatus::Error;
+                s.message = "Remote not configured".to_string();
+                return;
             }
 
             // Perform git pull
-            let pull_result = Command::new("git")
-                .args(["pull", "origin", "main", "--ff-only"])
-                .current_dir(&log_dir)
-                .output();
+            {
+                let mut s = state.lock().await;
+                s.status = SyncStatus::Applying;
+                s.message = "Pulling from origin...".to_string();
+            }
 
-            match pull_result {
-                Ok(output) => {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-
-                    if output.status.success() {
-                        let mut s = state.lock().await;
-                        s.status = SyncStatus::Applying;
-                        // git pull writes progress to stderr even on success;
-                        // use stdout for the actual result message.
-                        s.message = if stdout.contains("Already up to date") {
-                            "Already up to date".to_string()
-                        } else if !stdout.trim().is_empty() {
-                            format!("Pulled changes: {}", stdout.trim())
-                        } else if !stderr.trim().is_empty() {
-                            format!("Pulled changes: {}", stderr.trim())
-                        } else {
-                            "Pulled changes".to_string()
-                        };
-                    } else {
-                        let mut s = state.lock().await;
-                        s.status = SyncStatus::Error;
-                        s.message = format!("Pull failed: {}", stderr.trim());
-                        return;
-                    }
+            match repo.pull() {
+                Ok(_) => {
+                    let mut s = state.lock().await;
+                    s.message = "Pulled changes".to_string();
                 }
                 Err(e) => {
                     let mut s = state.lock().await;
                     s.status = SyncStatus::Error;
-                    s.message = format!("Pull error: {}", e);
+                    s.message = format!("Pull failed: {}", e);
                     return;
                 }
             }

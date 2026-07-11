@@ -13,9 +13,7 @@ use ratatui::{
 use chrono::{Local, TimeZone, Utc};
 
 use crate::controller::screen::{AppAction, Screen};
-use crate::paths::db_path;
-use crate::repository::connection::DbConnection;
-use crate::repository::duckdb::DrinkRepository;
+use crate::repository::drink::DrinkRepository;
 use crate::repository::DrinkRecord;
 use crate::sync::log::SyncLog;
 
@@ -31,7 +29,7 @@ pub struct DrinkLogScreen {
 }
 
 impl DrinkLogScreen {
-    pub fn new(sync_log: Rc<RefCell<SyncLog>>) -> Result<Self, duckdb::Error> {
+    pub fn new(sync_log: Rc<RefCell<SyncLog>>) -> rusqlite::Result<Self> {
         let mut screen = Self {
             drinks: Vec::new(),
             offset: 0,
@@ -44,13 +42,12 @@ impl DrinkLogScreen {
         Ok(screen)
     }
 
-    fn load_more(&mut self) -> Result<(), duckdb::Error> {
+    fn load_more(&mut self) -> rusqlite::Result<()> {
         if !self.has_more {
             return Ok(());
         }
 
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
+        let repo = DrinkRepository::with_sync_log(Rc::clone(&self.sync_log))?;
 
         let new_drinks = repo.get_drinks_paginated(self.offset, PAGE_SIZE)?;
 
@@ -81,14 +78,13 @@ impl DrinkLogScreen {
         }
     }
 
-    fn delete_selected(&mut self) -> Result<(), duckdb::Error> {
+    fn delete_selected(&mut self) -> rusqlite::Result<()> {
         if self.drinks.is_empty() || self.selected >= self.drinks.len() {
             return Ok(());
         }
         let drink = &self.drinks[self.selected];
         if let Some(id) = drink.id {
-            let db = DbConnection::open(&db_path())?;
-            let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
+            let repo = DrinkRepository::with_sync_log(Rc::clone(&self.sync_log))?;
             repo.delete_drink(id)?;
             self.drinks.remove(self.selected);
             if self.selected >= self.drinks.len() && self.selected > 0 {

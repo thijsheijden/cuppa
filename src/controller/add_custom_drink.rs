@@ -11,10 +11,8 @@ use crate::controller::error_screen::ErrorScreen;
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
 use crate::repository::{
-    connection::DbConnection,
     drink_type::DrinkTypeRepository,
 };
-use crate::paths::db_path;
 
 const ESPRESSO_MG_PER_SHOT: i32 = 63;
 
@@ -51,7 +49,7 @@ impl AddCustomDrinkScreen {
         }
     }
 
-    fn save(&self) -> Result<(), duckdb::Error> {
+    fn save(&self) -> rusqlite::Result<()> {
         if self.name.trim().is_empty() {
             return Ok(());
         }
@@ -60,8 +58,7 @@ impl AddCustomDrinkScreen {
             return Ok(());
         }
 
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkTypeRepository::new(db)?;
+        let repo = DrinkTypeRepository::new()?;
         repo.add_custom_drink(&self.name, mg)?;
         Ok(())
     }

@@ -17,11 +17,9 @@ use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
 use crate::controller::set_timestamp::SetTimestampScreen;
 use crate::repository::{
-    connection::DbConnection,
     drink_type::DrinkTypeRepository,
-    duckdb::DrinkRepository,
+    drink::DrinkRepository,
 };
-use crate::paths::db_path;
 use crate::sync::log::SyncLog;
 
 pub struct AddDrinkScreen {
@@ -34,9 +32,8 @@ pub struct AddDrinkScreen {
 }
 
 impl AddDrinkScreen {
-    pub fn new(sync_log: Rc<RefCell<SyncLog>>) -> Result<Self, duckdb::Error> {
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkTypeRepository::new(db)?;
+    pub fn new(sync_log: Rc<RefCell<SyncLog>>) -> rusqlite::Result<Self> {
+        let repo = DrinkTypeRepository::new()?;
         let drink_types = repo.get_drink_types_sorted_by_consumption()?;
         let filtered_types = drink_types.clone();
 
@@ -92,24 +89,23 @@ impl AddDrinkScreen {
         }
     }
 
-    fn log_selected_drink(&self, consumed_at: chrono::DateTime<Utc>) -> Result<(), duckdb::Error> {
+    fn log_selected_drink(&self, consumed_at: chrono::DateTime<Utc>) -> rusqlite::Result<()> {
         if self.filtered_types.is_empty() {
             return Ok(());
         }
         let index = self.selected_index();
         let (_key, name, caffeine_mg) = &self.filtered_types[index];
 
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
+        let repo = DrinkRepository::with_sync_log(Rc::clone(&self.sync_log))?;
         repo.add_drink(name, *caffeine_mg, consumed_at)?;
         Ok(())
     }
 
-    fn log_selected_drink_now(&self) -> Result<(), duckdb::Error> {
+    fn log_selected_drink_now(&self) -> rusqlite::Result<()> {
         self.log_selected_drink(Utc::now())
     }
 
-    fn handle_log_result(&self, result: Result<(), duckdb::Error>) -> AppAction {
+    fn handle_log_result(&self, result: rusqlite::Result<()>) -> AppAction {
         match result {
             Ok(()) => AppAction::PopScreen,
             Err(e) => {

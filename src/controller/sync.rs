@@ -12,9 +12,7 @@ use crate::controller::error_screen::ErrorScreen;
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::Screen;
 use crate::controller::syncing::SyncingScreen;
-use crate::repository::connection::DbConnection;
 use crate::repository::setting::SettingRepository;
-use crate::paths::db_path;
 use crate::sync::log::SyncLog;
 use crate::sync::ops::PendingOp;
 
@@ -39,8 +37,7 @@ impl SyncController {
     pub fn read_missing_logs(&self,
     ) -> Result<Vec<(u64, PendingOp)>, Box<dyn std::error::Error>> {
         let last_seq = {
-            let db = DbConnection::open(&db_path())?;
-            let settings = SettingRepository::new(db)?;
+            let settings = SettingRepository::new()?;
             settings.get_sync_last_seq()?
         };
 
@@ -224,8 +221,7 @@ impl SyncController {
             syncing.add_message("Git: reading remote URL from settings...".to_string());
             self.draw_with_syncing(terminal, render_app, syncing)?;
 
-            let db = crate::repository::connection::DbConnection::open(&db_path())?;
-            let settings = crate::repository::setting::SettingRepository::new(db)?;
+            let settings = crate::repository::setting::SettingRepository::new()?;
             if let Some(url) = settings.get_sync_remote_url()? {
                 syncing.add_message(format!("Git: adding remote {}...", url));
                 self.draw_with_syncing(terminal, render_app, syncing)?;

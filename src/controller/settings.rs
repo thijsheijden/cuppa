@@ -11,8 +11,6 @@ use ratatui::{
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
 use crate::entity::setting::{Setting, SettingType, SETTING_BEDTIME, SETTING_CAFFEINE_MG_AT_BEDTIME, SETTING_SYNC_REMOTE_URL};
-use crate::paths::db_path;
-use crate::repository::connection::DbConnection;
 use crate::repository::setting::SettingRepository;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,9 +33,8 @@ pub struct SettingsScreen {
 }
 
 impl SettingsScreen {
-    pub fn new() -> Result<Self, duckdb::Error> {
-        let db = DbConnection::open(&db_path())?;
-        let repo = SettingRepository::new(db)?;
+    pub fn new() -> rusqlite::Result<Self> {
+        let repo = SettingRepository::new()?;
 
         let bedtime = repo
             .get_setting(SETTING_BEDTIME)?
@@ -96,13 +93,12 @@ impl SettingsScreen {
         self.bedtime_valid && self.caffeine_mg_valid
     }
 
-    fn save(&mut self) -> Result<(), duckdb::Error> {
+    fn save(&mut self) -> rusqlite::Result<()> {
         if !self.validate_all() {
             return Ok(());
         }
 
-        let db = DbConnection::open(&db_path())?;
-        let repo = SettingRepository::new(db)?;
+        let repo = SettingRepository::new()?;
 
         let bedtime = NaiveTime::parse_from_str(&self.bedtime, "%H:%M").unwrap();
         repo.set_bedtime(bedtime)?;

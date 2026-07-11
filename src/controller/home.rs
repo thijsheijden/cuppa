@@ -1,17 +1,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use duckdb::Result as DuckResult;
-
 use chrono::{Local, Utc, TimeZone};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::controller::add_drink::AddDrinkScreen;
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
-use crate::paths::db_path;
-use crate::repository::connection::DbConnection;
-use crate::repository::duckdb::{DrinkFilter, DrinkRepository};
+use crate::repository::drink::{DrinkFilter, DrinkRepository};
 use crate::repository::setting::SettingRepository;
 use crate::sync::background::{BackgroundSyncState, SyncStatus};
 use crate::sync::log::SyncLog;
@@ -36,11 +32,10 @@ pub struct HomeController {
 
 impl HomeController {
     pub fn new(
-        db: DbConnection,
         sync_log: Rc<RefCell<SyncLog>>,
         background_sync_state: Option<std::sync::Arc<tokio::sync::Mutex<BackgroundSyncState>>>,
-    ) -> DuckResult<Self> {
-        let repo = DrinkRepository::with_sync_log(db, Rc::clone(&sync_log))?;
+    ) -> rusqlite::Result<Self> {
+        let repo = DrinkRepository::with_sync_log(Rc::clone(&sync_log))?;
         let current_caffeine_level = repo.current_caffeine_level()?;
         let today_total_caffeine = repo.get_today_total_caffeine()?;
         let todays_drinks = Self::load_todays_drinks()?;
@@ -54,7 +49,7 @@ impl HomeController {
         Ok(Self {
             current_caffeine_level,
             today_total_caffeine,
-            half_life_hours: crate::repository::duckdb::CAFFEINE_HALF_LIFE_HOURS,
+            half_life_hours: crate::repository::drink::CAFFEINE_HALF_LIFE_HOURS,
             todays_drinks,
             caffeine_series,
             sleep_time,
@@ -69,9 +64,8 @@ impl HomeController {
         })
     }
 
-    fn load_settings() -> DuckResult<(String, i32)> {
-        let db = DbConnection::open(&db_path())?;
-        let repo = SettingRepository::new(db)?;
+    fn load_settings() -> rusqlite::Result<(String, i32)> {
+        let repo = SettingRepository::new()?;
         
         let bedtime = repo
             .get_setting(crate::entity::setting::SETTING_BEDTIME)?
@@ -86,9 +80,8 @@ impl HomeController {
         Ok((bedtime, bedtime_caffeine_mg))
     }
 
-    fn load_todays_drinks() -> DuckResult<Vec<(String, String)>> {
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkRepository::new(db)?;
+    fn load_todays_drinks() -> rusqlite::Result<Vec<(String, String)>> {
+        let repo = DrinkRepository::new()?;
 
         let today_start = Local::now()
             .date_naive()
@@ -115,9 +108,8 @@ impl HomeController {
         Ok(recent)
     }
 
-    fn load_caffeine_series() -> DuckResult<Vec<(String, f64)>> {
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkRepository::new(db)?;
+    fn load_caffeine_series() -> rusqlite::Result<Vec<(String, f64)>> {
+        let repo = DrinkRepository::new()?;
         let series = repo.generate_caffeine_series()?;
 
         let formatted = series
@@ -131,9 +123,8 @@ impl HomeController {
         Ok(formatted)
     }
 
-    fn load_sleep_time() -> DuckResult<Option<String>> {
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkRepository::new(db)?;
+    fn load_sleep_time() -> rusqlite::Result<Option<String>> {
+        let repo = DrinkRepository::new()?;
         match repo.time_until_threshold(50.0)? {
             Some(dt) => {
                 let local = dt.with_timezone(&Local);
@@ -156,12 +147,11 @@ impl HomeController {
         }
     }
 
-    pub fn refresh(&mut self) -> DuckResult<()> {
+    pub fn refresh(&mut self) -> rusqlite::Result<()> {
         // If background sync has pulled new data, apply pending ops to the DB
         self.apply_pending_sync_ops()?;
 
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
+        let repo = DrinkRepository::with_sync_log(Rc::clone(&self.sync_log))?;
         self.current_caffeine_level = repo.current_caffeine_level()?;
         self.today_total_caffeine = repo.get_today_total_caffeine()?;
         self.todays_drinks = Self::load_todays_drinks()?;
@@ -187,9 +177,8 @@ impl HomeController {
 
     /// Apply pending sync operations from the log files to the local database.
     /// This is called from refresh() when the background sync has pulled new data.
-    fn apply_pending_sync_ops(&mut self) -> DuckResult<()> {
-        let db = DbConnection::open(&db_path())?;
-        let settings = SettingRepository::new(db)?;
+    fn apply_pending_sync_ops(&mut self) -> rusqlite::Result<()> {
+        let settings = SettingRepository::new()?;
         let last_seq = settings.get_sync_last_seq()?;
 
         // Read missing ops from log files (on the main thread, no async needed)
@@ -203,8 +192,7 @@ impl HomeController {
             return Ok(());
         }
 
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkRepository::new(db)?;
+        let repo = DrinkRepository::new()?;
         let mut max_seq = last_seq;
 
         for (seq, op) in pending {
@@ -228,8 +216,7 @@ impl HomeController {
         }
 
         // Update cursor to the highest applied sequence + 1
-        let db = DbConnection::open(&db_path())?;
-        let settings = SettingRepository::new(db)?;
+        let settings = SettingRepository::new()?;
         let _ = settings.set_sync_last_seq(max_seq + 1);
 
         Ok(())

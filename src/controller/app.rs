@@ -20,7 +20,7 @@ pub struct AppController {
 }
 
 impl AppController {
-    pub fn new(db_path: &str, sync_log_dir: &std::path::Path) -> std::io::Result<Self> {
+    pub fn new(sync_log_dir: &std::path::Path) -> std::io::Result<Self> {
         let runtime = tokio::runtime::Runtime::new().map_err(|e| {
             std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to create tokio runtime: {}", e))
         })?;
@@ -44,9 +44,7 @@ impl AppController {
         };
 
         // Pass background sync state to home controller
-        let db = crate::repository::connection::DbConnection::open(db_path)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        let home = crate::controller::home::HomeController::new(db, app.sync_log(), Some(bg_state))
+        let home = crate::controller::home::HomeController::new(app.sync_log(), Some(bg_state))
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         app.push_screen(Box::new(home));
 

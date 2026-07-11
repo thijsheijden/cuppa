@@ -12,11 +12,7 @@ use chrono::{Local, NaiveDateTime, TimeZone, Utc};
 use crate::controller::error_screen::ErrorScreen;
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
-use crate::repository::{
-    connection::DbConnection,
-    duckdb::DrinkRepository,
-};
-use crate::paths::db_path;
+use crate::repository::drink::DrinkRepository;
 use crate::sync::log::SyncLog;
 
 use std::cell::RefCell;
@@ -62,14 +58,13 @@ impl SetTimestampScreen {
         Local.from_local_datetime(&naive).single().map(|dt| dt.with_timezone(&Utc))
     }
 
-    fn save(&self) -> Result<(), duckdb::Error> {
+    fn save(&self) -> rusqlite::Result<()> {
         let consumed_at = match self.parse_timestamp() {
             Some(dt) => dt,
             None => return Ok(()),
         };
 
-        let db = DbConnection::open(&db_path())?;
-        let repo = DrinkRepository::with_sync_log(db, Rc::clone(&self.sync_log))?;
+        let repo = DrinkRepository::with_sync_log(Rc::clone(&self.sync_log))?;
         repo.add_drink(&self.drink_name, self.caffeine_mg, consumed_at)?;
         Ok(())
     }

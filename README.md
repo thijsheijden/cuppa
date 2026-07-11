@@ -45,6 +45,12 @@ cd cuppa
 cargo install --path .
 ```
 
+### Updating
+```bash
+brew update
+brew upgrade cuppa
+```
+
 ## Usage
 
 Launch Cuppa from your terminal:

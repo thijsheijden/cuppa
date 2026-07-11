@@ -3,15 +3,15 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Style},
-    text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
 
-use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
-use crate::entity::setting::{Setting, SettingType, SETTING_BEDTIME, SETTING_CAFFEINE_MG_AT_BEDTIME, SETTING_SYNC_REMOTE_URL};
+use crate::entity::setting::{SETTING_BEDTIME, SETTING_CAFFEINE_MG_AT_BEDTIME};
+use crate::paths::sync_log_dir;
 use crate::repository::setting::SettingRepository;
+use crate::sync::git::GitRepo;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FocusedField {
@@ -93,7 +93,7 @@ impl SettingsScreen {
         self.bedtime_valid && self.caffeine_mg_valid
     }
 
-    fn save(&mut self) -> rusqlite::Result<()> {
+    fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if !self.validate_all() {
             return Ok(());
         }
@@ -106,7 +106,24 @@ impl SettingsScreen {
         let caffeine_mg = self.caffeine_mg.parse::<i32>().unwrap();
         repo.set_caffeine_mg_at_bedtime(caffeine_mg)?;
 
+        // Get the old remote URL to detect changes
+        let old_url = repo.get_sync_remote_url()?;
         repo.set_sync_remote_url(&self.sync_remote_url)?;
+
+        // If the remote URL changed and a git repo exists, update the remote
+        if old_url.as_ref() != Some(&self.sync_remote_url) {
+            if let Some(log_dir) = sync_log_dir() {
+                if log_dir.join(".git").exists() {
+                    if let Ok(git_repo) = GitRepo::open_or_init(&log_dir, None) {
+                        if git_repo.has_remote().unwrap_or(false) {
+                            let _ = git_repo.set_remote_url(&self.sync_remote_url);
+                        } else if !self.sync_remote_url.is_empty() {
+                            let _ = git_repo.add_remote(&self.sync_remote_url);
+                        }
+                    }
+                }
+            }
+        }
 
         self.saved = true;
         Ok(())

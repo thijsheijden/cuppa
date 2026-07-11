@@ -176,6 +176,22 @@ impl GitRepo {
         Ok(())
     }
 
+    /// Update the URL of the existing `origin` remote.
+    pub fn set_remote_url(&self, url: &str) -> Result<(), GitError> {
+        let output = Command::new("git")
+            .args(["remote", "set-url", "origin", url])
+            .current_dir(&self.dir)
+            .output()?;
+        if !output.status.success() {
+            return Err(format!(
+                "git remote set-url failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        }
+        Ok(())
+    }
+
     /// Stage all changes.
     pub fn add_all(&self) -> Result<(), GitError> {
         let output = Command::new("git")

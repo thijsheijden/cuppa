@@ -10,7 +10,7 @@ use ratatui::{
     Frame,
 };
 
-use chrono::Utc;
+use chrono::{Local, Utc, TimeZone};
 
 use crate::controller::error_screen::ErrorScreen;
 use crate::controller::popover::PopoverScreen;
@@ -19,6 +19,7 @@ use crate::controller::set_timestamp::SetTimestampScreen;
 use crate::repository::{
     drink_type::DrinkTypeRepository,
     drink::DrinkRepository,
+    setting::SettingRepository,
 };
 use crate::sync::log::SyncLog;
 
@@ -28,6 +29,9 @@ pub struct AddDrinkScreen {
     search_query: String,
     search_focused: bool,
     list_state: RefCell<ListState>,
+    bedtime: String,
+    bedtime_caffeine_mg: i32,
+    current_caffeine_level: f64,
     sync_log: Rc<RefCell<SyncLog>>,
 }
 
@@ -42,12 +46,28 @@ impl AddDrinkScreen {
             list_state.select(Some(0));
         }
 
+        let settings = SettingRepository::new()?;
+        let bedtime = settings
+            .get_setting(crate::entity::setting::SETTING_BEDTIME)?
+            .map(|s| s.value)
+            .unwrap_or_else(|| "23:00".to_string());
+        let bedtime_caffeine_mg = settings
+            .get_setting(crate::entity::setting::SETTING_CAFFEINE_MG_AT_BEDTIME)?
+            .and_then(|s| s.as_int())
+            .unwrap_or(50);
+
+        let drink_repo = DrinkRepository::new()?;
+        let current_caffeine_level = drink_repo.current_caffeine_level()?;
+
         Ok(Self {
             drink_types,
             filtered_types,
             search_query: String::new(),
             search_focused: false,
             list_state: RefCell::new(list_state),
+            bedtime,
+            bedtime_caffeine_mg,
+            current_caffeine_level,
             sync_log,
         })
     }
@@ -100,6 +120,22 @@ impl AddDrinkScreen {
         if i > 0 {
             self.list_state.borrow_mut().select(Some(i - 1));
         }
+    }
+
+    fn caffeine_at_bedtime(&self, drink_caffeine_mg: i32) -> f64 {
+        let now = Utc::now();
+        let bedtime_naive = chrono::NaiveTime::parse_from_str(&self.bedtime, "%H:%M")
+            .unwrap_or_else(|_| chrono::NaiveTime::from_hms_opt(23, 0, 0).unwrap());
+        let bedtime_today = now.date_naive().and_time(bedtime_naive);
+        let bedtime_local = chrono::Local.from_local_datetime(&bedtime_today).unwrap();
+        let mut bedtime_utc = bedtime_local.with_timezone(&Utc);
+        if bedtime_utc <= now {
+            bedtime_utc = bedtime_utc + chrono::Duration::days(1);
+        }
+        let hours_until_bedtime = bedtime_utc.signed_duration_since(now).num_seconds() as f64 / 3600.0;
+        let decayed = self.current_caffeine_level * 0.5f64.powf(hours_until_bedtime / crate::repository::drink::CAFFEINE_HALF_LIFE_HOURS);
+        let drink_decayed = drink_caffeine_mg as f64 * 0.5f64.powf(hours_until_bedtime / crate::repository::drink::CAFFEINE_HALF_LIFE_HOURS);
+        decayed + drink_decayed
     }
 
     fn log_selected_drink(&self, consumed_at: chrono::DateTime<Utc>) -> rusqlite::Result<()> {
@@ -191,9 +227,21 @@ impl Screen for AddDrinkScreen {
             .filtered_types
             .iter()
             .map(|(_key, name, mg)| {
+                let bedtime_level = self.caffeine_at_bedtime(*mg);
+                let threshold = self.bedtime_caffeine_mg as f64;
+                let (arrow, arrow_color) = if bedtime_level > threshold {
+                    ("↑", Color::Red)
+                } else if bedtime_level < threshold {
+                    ("↓", Color::Green)
+                } else {
+                    ("→", Color::Gray)
+                };
                 ListItem::new(Line::from(vec![
                     Span::raw(format!("{} ", name)),
-                    Span::styled(format!("({}mg)", mg), Style::default().fg(Color::DarkGray)),
+                    Span::styled(format!("({}mg -> ", mg), Style::default().fg(Color::DarkGray)),
+                    Span::styled(format!("{:.1}mg ", bedtime_level), Style::default().fg(Color::Magenta)),
+                    Span::styled(arrow, Style::default().fg(arrow_color)),
+                    Span::styled(")", Style::default().fg(Color::DarkGray)),
                 ]))
             })
             .collect();

@@ -27,7 +27,7 @@ pub struct AddDrinkScreen {
     filtered_types: Vec<(String, String, i32)>,
     search_query: String,
     search_focused: bool,
-    list_state: ListState,
+    list_state: RefCell<ListState>,
     sync_log: Rc<RefCell<SyncLog>>,
 }
 
@@ -47,7 +47,7 @@ impl AddDrinkScreen {
             filtered_types,
             search_query: String::new(),
             search_focused: false,
-            list_state,
+            list_state: RefCell::new(list_state),
             sync_log,
         })
     }
@@ -61,38 +61,44 @@ impl AddDrinkScreen {
             .cloned()
             .collect();
 
+        let mut state = self.list_state.borrow_mut();
         if !self.filtered_types.is_empty() {
-            self.list_state.select(Some(0));
+            state.select(Some(0));
         } else {
-            self.list_state.select(None);
+            state.select(None);
         }
     }
 
     pub fn reload_drink_types(&mut self) -> rusqlite::Result<()> {
         let repo = DrinkTypeRepository::new()?;
-        self.drink_types = repo.get_drink_types_sorted_by_consumption()?;
-        self.filter_types();
+        let new_types = repo.get_drink_types_sorted_by_consumption()?;
+        if new_types.len() != self.drink_types.len() {
+            self.drink_types = new_types;
+            self.filter_types();
+        } else {
+            self.drink_types = new_types;
+        }
         Ok(())
     }
 
     fn selected_index(&self) -> usize {
-        self.list_state.selected().unwrap_or(0)
+        self.list_state.borrow().selected().unwrap_or(0)
     }
 
-    fn select_next(&mut self) {
+    fn select_next(&self) {
         if self.filtered_types.is_empty() {
             return;
         }
         let i = self.selected_index();
         if i < self.filtered_types.len() - 1 {
-            self.list_state.select(Some(i + 1));
+            self.list_state.borrow_mut().select(Some(i + 1));
         }
     }
 
-    fn select_previous(&mut self) {
+    fn select_previous(&self) {
         let i = self.selected_index();
         if i > 0 {
-            self.list_state.select(Some(i - 1));
+            self.list_state.borrow_mut().select(Some(i - 1));
         }
     }
 
@@ -196,7 +202,7 @@ impl Screen for AddDrinkScreen {
             .block(Block::default().borders(Borders::ALL).title("Drinks"))
             .highlight_style(Style::default().bg(Color::Blue).fg(Color::White))
             .highlight_symbol("> ");
-        frame.render_stateful_widget(list_widget, layout[1], &mut self.list_state.clone());
+        frame.render_stateful_widget(list_widget, layout[1], &mut *self.list_state.borrow_mut());
 
         // Footer hint
         let footer_area = ratatui::layout::Rect::new(
@@ -216,7 +222,7 @@ impl Screen for AddDrinkScreen {
                 KeyCode::Esc => {
                     self.search_focused = false;
                     if !self.filtered_types.is_empty() {
-                        self.list_state.select(Some(0));
+                        self.list_state.borrow_mut().select(Some(0));
                     }
                 }
                 KeyCode::Backspace => {

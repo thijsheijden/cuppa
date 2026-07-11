@@ -62,6 +62,18 @@ impl BackgroundSync {
         let state = Arc::clone(&self.state);
 
         runtime.spawn(async move {
+            // Check if a remote URL is configured in settings before doing anything
+            let remote_url = match crate::repository::setting::SettingRepository::new() {
+                Ok(repo) => repo.get_sync_remote_url().unwrap_or(None),
+                Err(_) => None,
+            };
+
+            // No remote configured in settings — nothing to do, stay silent
+            if remote_url.is_none() {
+                return;
+            }
+            let remote_url = remote_url.unwrap();
+
             // Update status: pulling
             {
                 let mut s = state.lock().await;
@@ -69,14 +81,76 @@ impl BackgroundSync {
                 s.message = "Pulling remote logs...".to_string();
             }
 
-            // Check if git repo exists
+            // If no git repo exists yet, initialise one and add the remote
             if !log_dir.join(".git").exists() {
                 {
                     let mut s = state.lock().await;
-                    s.status = SyncStatus::Done;
-                    s.message = "No remote configured".to_string();
+                    s.message = "Git: init repo...".to_string();
                 }
-                return;
+
+                let output = Command::new("git")
+                    .args(["init"])
+                    .current_dir(&log_dir)
+                    .output();
+
+                if let Ok(output) = output {
+                    if !output.status.success() {
+                        let mut s = state.lock().await;
+                        s.status = SyncStatus::Error;
+                        s.message = format!("git init failed: {}", String::from_utf8_lossy(&output.stderr));
+                        return;
+                    }
+                } else {
+                    let mut s = state.lock().await;
+                    s.status = SyncStatus::Error;
+                    s.message = "git init failed".to_string();
+                    return;
+                }
+
+                // Configure git user for commits
+                let _ = Command::new("git")
+                    .args(["config", "user.email", "sync@cuppa.app"])
+                    .current_dir(&log_dir)
+                    .output();
+                let _ = Command::new("git")
+                    .args(["config", "user.name", "Cuppa Sync"])
+                    .current_dir(&log_dir)
+                    .output();
+
+                // Add the remote
+                let output = Command::new("git")
+                    .args(["remote", "add", "origin", &remote_url])
+                    .current_dir(&log_dir)
+                    .output();
+
+                if let Ok(output) = output {
+                    if !output.status.success() {
+                        let mut s = state.lock().await;
+                        s.status = SyncStatus::Error;
+                        s.message = format!("git remote add failed: {}", String::from_utf8_lossy(&output.stderr));
+                        return;
+                    }
+                } else {
+                    let mut s = state.lock().await;
+                    s.status = SyncStatus::Error;
+                    s.message = "git remote add failed".to_string();
+                    return;
+                }
+
+                // Create initial commit so we have a branch to pull into
+                let output = Command::new("git")
+                    .args(["commit", "--allow-empty", "-m", "Initial commit"])
+                    .current_dir(&log_dir)
+                    .output();
+
+                if let Ok(output) = output {
+                    if !output.status.success() {
+                        let mut s = state.lock().await;
+                        s.status = SyncStatus::Error;
+                        s.message = format!("git initial commit failed: {}", String::from_utf8_lossy(&output.stderr));
+                        return;
+                    }
+                }
             }
 
             // Check if remote exists
@@ -88,8 +162,8 @@ impl BackgroundSync {
             match remote_check {
                 Ok(output) if !output.status.success() => {
                     let mut s = state.lock().await;
-                    s.status = SyncStatus::Done;
-                    s.message = "No remote configured".to_string();
+                    s.status = SyncStatus::Error;
+                    s.message = "Remote not found".to_string();
                     return;
                 }
                 Err(_) => {

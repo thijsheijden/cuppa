@@ -55,7 +55,12 @@ impl Screen for PopoverScreen {
     }
 
     fn handle_input(&mut self, key: KeyEvent) -> AppAction {
-        self.inner.handle_input(key)
+        let action = self.inner.handle_input(key);
+        // Forward F5 refresh to the inner screen even if the popover would otherwise ignore it
+        if key.code == KeyCode::F(5) {
+            return AppAction::Continue;
+        }
+        action
     }
 }
 

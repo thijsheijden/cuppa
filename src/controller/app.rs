@@ -102,6 +102,15 @@ impl AppController {
                                     let _ = screen.handle_input(KeyEvent::from(KeyCode::F(5)));
                                 }
                             }
+                            AppAction::PopAndRefresh => {
+                                if self.screen_stack.len() > 1 {
+                                    self.screen_stack.pop();
+                                }
+                                // Refresh the now-active screen (e.g. AddDrinkScreen reloads drink types)
+                                if let Some(screen) = self.screen_stack.last_mut() {
+                                    let _ = screen.handle_input(KeyEvent::from(KeyCode::F(5)));
+                                }
+                            }
                         }
                     }
                 }

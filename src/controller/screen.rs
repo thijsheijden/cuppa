@@ -10,6 +10,7 @@ pub enum AppAction {
     Quit,
     PushScreen(Box<dyn Screen>),
     PopScreen,
+    PopAndRefresh,
 }
 
 impl PartialEq for AppAction {
@@ -18,6 +19,7 @@ impl PartialEq for AppAction {
             (AppAction::Continue, AppAction::Continue) => true,
             (AppAction::Quit, AppAction::Quit) => true,
             (AppAction::PopScreen, AppAction::PopScreen) => true,
+            (AppAction::PopAndRefresh, AppAction::PopAndRefresh) => true,
             _ => false,
         }
     }

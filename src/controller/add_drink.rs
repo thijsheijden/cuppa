@@ -68,6 +68,13 @@ impl AddDrinkScreen {
         }
     }
 
+    pub fn reload_drink_types(&mut self) -> rusqlite::Result<()> {
+        let repo = DrinkTypeRepository::new()?;
+        self.drink_types = repo.get_drink_types_sorted_by_consumption()?;
+        self.filter_types();
+        Ok(())
+    }
+
     fn selected_index(&self) -> usize {
         self.list_state.selected().unwrap_or(0)
     }
@@ -262,6 +269,9 @@ impl Screen for AddDrinkScreen {
                 let custom_screen = crate::controller::add_custom_drink::AddCustomDrinkScreen::new();
                 let popover = PopoverScreen::new(Box::new(custom_screen), 50, 14);
                 return AppAction::PushScreen(Box::new(popover));
+            }
+            KeyCode::F(5) => {
+                let _ = self.reload_drink_types();
             }
             KeyCode::Esc => {
                 return AppAction::PopScreen;

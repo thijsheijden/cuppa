@@ -211,7 +211,7 @@ impl Screen for AddCustomDrinkScreen {
                 } else {
                     let result = self.save();
                     match result {
-                        Ok(()) => return AppAction::PopScreen,
+                        Ok(()) => return AppAction::PopAndRefresh,
                         Err(e) => {
                             let error_screen = ErrorScreen::new(format!("Failed to save: {}", e));
                             let popover = PopoverScreen::new(Box::new(error_screen), 50, 8);

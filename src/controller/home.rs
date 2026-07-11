@@ -5,6 +5,7 @@ use chrono::{Local, Utc, TimeZone};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::controller::add_drink::AddDrinkScreen;
+use crate::controller::add_custom_drink::AddCustomDrinkScreen;
 use crate::controller::popover::PopoverScreen;
 use crate::controller::screen::{AppAction, Screen};
 use crate::repository::drink::{DrinkFilter, DrinkRepository};
@@ -299,6 +300,11 @@ impl Screen for HomeController {
                     }
                     Err(_) => AppAction::Continue,
                 }
+            }
+            KeyCode::Char('c') => {
+                let custom_screen = AddCustomDrinkScreen::new();
+                let popover = PopoverScreen::new(Box::new(custom_screen), 50, 14);
+                AppAction::PushScreen(Box::new(popover))
             }
             _ => AppAction::Continue,
         }

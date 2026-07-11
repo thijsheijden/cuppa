@@ -26,7 +26,11 @@
 
 | Custom Drink Types | Settings |
 |-------------------|----------|
-| ![Custom Types](assets/custom_drink_types.png) | ![Settings](assets/settings.png) |
+| ![Custom Types](assets/custom_drink.png) | ![Settings](assets/settings.png) |
+
+| Log | 
+|-------------------|
+| ![Drink Log](assets/log.png) |
 
 ## Installation
 

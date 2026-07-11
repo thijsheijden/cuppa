@@ -252,6 +252,12 @@ impl DrinkRepository {
         Ok(None)
     }
 
+    pub fn caffeine_level_at(&self, at: DateTime<Utc>) -> rusqlite::Result<f64> {
+        let cutoff = at - Duration::hours(72);
+        let drinks = self.get_drinks_since(cutoff)?;
+        Ok(Self::calculate_level_at(&drinks, at))
+    }
+
     pub fn get_drinks_paginated(&self, offset: usize, limit: usize) -> rusqlite::Result<Vec<DrinkRecord>> {
         let conn = open_db(db_path())?;
         let mut stmt = conn.prepare(

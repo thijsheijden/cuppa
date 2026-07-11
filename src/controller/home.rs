@@ -23,6 +23,7 @@ pub struct HomeController {
     pub current_time: String,
     pub bedtime: String,
     pub bedtime_caffeine_mg: i32,
+    pub bedtime_caffeine_level: f64,
     pub sync_status: SyncStatus,
     pub sync_message: String,
     pub sync_spinner_frame: usize,
@@ -44,6 +45,8 @@ impl HomeController {
 
         let (bedtime, bedtime_caffeine_mg) = Self::load_settings()?;
 
+        let bedtime_caffeine_level = Self::calculate_bedtime_caffeine_level(&bedtime)?;
+
         let current_time = Local::now().format("%H:%M").to_string();
 
         Ok(Self {
@@ -56,6 +59,7 @@ impl HomeController {
             current_time,
             bedtime,
             bedtime_caffeine_mg,
+            bedtime_caffeine_level,
             sync_status: SyncStatus::Idle,
             sync_message: String::new(),
             sync_spinner_frame: 0,
@@ -78,6 +82,25 @@ impl HomeController {
             .unwrap_or(50);
         
         Ok((bedtime, bedtime_caffeine_mg))
+    }
+
+    fn calculate_bedtime_caffeine_level(bedtime: &str) -> rusqlite::Result<f64> {
+        let repo = DrinkRepository::new()?;
+        let bedtime_naive = chrono::NaiveTime::parse_from_str(bedtime, "%H:%M")
+            .unwrap_or_else(|_| chrono::NaiveTime::from_hms_opt(23, 0, 0).unwrap());
+        let now = Local::now();
+        let bedtime_today = now.date_naive().and_time(bedtime_naive);
+        let bedtime_local = chrono::Local.from_local_datetime(&bedtime_today).unwrap();
+        let bedtime_utc = bedtime_local.with_timezone(&Utc);
+        
+        // If bedtime has already passed today, use tomorrow
+        let bedtime_utc = if bedtime_utc <= now.with_timezone(&Utc) {
+            bedtime_utc + chrono::Duration::days(1)
+        } else {
+            bedtime_utc
+        };
+        
+        Ok(repo.caffeine_level_at(bedtime_utc)?)
     }
 
     fn load_todays_drinks() -> rusqlite::Result<Vec<(String, String)>> {
@@ -160,8 +183,10 @@ impl HomeController {
         self.current_time = Local::now().format("%H:%M").to_string();
 
         let (bedtime, bedtime_caffeine_mg) = Self::load_settings()?;
+        let bedtime_caffeine_level = Self::calculate_bedtime_caffeine_level(&bedtime)?;
         self.bedtime = bedtime;
         self.bedtime_caffeine_mg = bedtime_caffeine_mg;
+        self.bedtime_caffeine_level = bedtime_caffeine_level;
 
         // Update sync status from background task if available
         if let Some(ref state) = self.background_sync_state {

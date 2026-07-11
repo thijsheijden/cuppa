@@ -54,18 +54,27 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
         Span::styled("Today: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
         Span::raw(format!("{} mg ({}% of 400mg)", controller.today_total_caffeine, daily_pct)),
     ]);
-    let sleep_line = match &controller.sleep_time {
-        Some(time) => Line::from(vec![
-            Span::styled("Sleep ready: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
-            Span::raw(time.clone()),
-        ]),
-        None => Line::from(vec![
-            Span::styled("Sleep ready: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
-            Span::raw("now"),
-        ]),
+    let bedtime_line = {
+        let bedtime_val = controller.bedtime_caffeine_level;
+        let threshold = controller.bedtime_caffeine_mg as f64;
+        let (arrow, arrow_color) = if bedtime_val > threshold {
+            ("↑", Color::Red)
+        } else if bedtime_val < threshold {
+            ("↓", Color::Green)
+        } else {
+            ("→", Color::Gray)
+        };
+        Line::from(vec![
+            Span::styled("At ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+            Span::styled("bedtime", Style::default().add_modifier(ratatui::style::Modifier::BOLD).fg(Color::Magenta)),
+            Span::styled(": ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+            Span::raw(format!("{:.1} mg", bedtime_val)),
+            Span::raw(" "),
+            Span::styled(arrow, Style::default().fg(arrow_color)),
+        ])
     };
 
-    let stats_text = ratatui::text::Text::from(vec![current_line, today_line]);
+    let stats_text = ratatui::text::Text::from(vec![current_line, today_line, bedtime_line]);
     let stats_widget = Paragraph::new(stats_text)
         .block(Block::default().borders(Borders::ALL).title("Statistics"));
     frame.render_widget(stats_widget, bottom_layout[0]);

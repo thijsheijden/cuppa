@@ -27,6 +27,7 @@ pub struct HomeController {
     pub bedtime_caffeine_level: f64,
     pub sync_status: SyncStatus,
     pub sync_message: String,
+    pub lifetime_stats: crate::repository::drink::LifetimeStats,
     pub sync_spinner_frame: usize,
     sync_log: Rc<RefCell<SyncLog>>,
     background_sync_state: Option<std::sync::Arc<tokio::sync::Mutex<BackgroundSyncState>>>,
@@ -48,6 +49,8 @@ impl HomeController {
 
         let bedtime_caffeine_level = Self::calculate_bedtime_caffeine_level(&bedtime)?;
 
+        let lifetime_stats = repo.get_lifetime_stats()?;
+
         let current_time = Local::now().format("%H:%M").to_string();
 
         Ok(Self {
@@ -63,6 +66,7 @@ impl HomeController {
             bedtime_caffeine_level,
             sync_status: SyncStatus::Idle,
             sync_message: String::new(),
+            lifetime_stats,
             sync_spinner_frame: 0,
             sync_log,
             background_sync_state,
@@ -185,9 +189,11 @@ impl HomeController {
 
         let (bedtime, bedtime_caffeine_mg) = Self::load_settings()?;
         let bedtime_caffeine_level = Self::calculate_bedtime_caffeine_level(&bedtime)?;
+        let lifetime_stats = repo.get_lifetime_stats()?;
         self.bedtime = bedtime;
         self.bedtime_caffeine_mg = bedtime_caffeine_mg;
         self.bedtime_caffeine_level = bedtime_caffeine_level;
+        self.lifetime_stats = lifetime_stats;
 
         // Update sync status from background task if available
         if let Some(ref state) = self.background_sync_state {

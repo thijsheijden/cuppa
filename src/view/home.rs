@@ -43,6 +43,7 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
         ])
         .split(bottom);
 
+    // Build the "Today" stats panel (left side, top)
     let daily_max = 400;
     let daily_pct = (controller.today_total_caffeine as f64 / daily_max as f64 * 100.0).min(100.0) as u32;
 
@@ -74,10 +75,39 @@ pub fn render(frame: &mut Frame, controller: &HomeController) {
         ])
     };
 
-    let stats_text = ratatui::text::Text::from(vec![current_line, today_line, bedtime_line]);
-    let stats_widget = Paragraph::new(stats_text)
-        .block(Block::default().borders(Borders::ALL).title("Statistics"));
-    frame.render_widget(stats_widget, bottom_layout[0]);
+    let today_stats_text = ratatui::text::Text::from(vec![current_line, today_line, bedtime_line]);
+    let today_stats_widget = Paragraph::new(today_stats_text)
+        .block(Block::default().borders(Borders::ALL).title("Today"));
+
+    // Build the "Lifetime" stats panel (left side, bottom)
+    let lifetime_line = Line::from(vec![
+        Span::styled("Drinks: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+        Span::raw(format!("{}", controller.lifetime_stats.total_drinks)),
+    ]);
+    let lifetime_caffeine_line = Line::from(vec![
+        Span::styled("Total caffeine: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+        Span::raw(format!("{:.1} g", controller.lifetime_stats.total_caffeine_mg as f64 / 1000.0)),
+    ]);
+    let lifetime_avg_line = Line::from(vec![
+        Span::styled("Avg/day: ", Style::default().add_modifier(ratatui::style::Modifier::BOLD)),
+        Span::raw(format!("~{:.0} mg", controller.lifetime_stats.avg_per_day)),
+    ]);
+
+    let lifetime_text = ratatui::text::Text::from(vec![lifetime_line, lifetime_caffeine_line, lifetime_avg_line]);
+    let lifetime_widget = Paragraph::new(lifetime_text)
+        .block(Block::default().borders(Borders::ALL).title("Lifetime"));
+
+    // Stack Today and Lifetime panels vertically on the left side
+    let left_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(5),  // Today panel (3 lines + 2 for borders)
+            Constraint::Min(0),    // Lifetime panel takes remaining space
+        ])
+        .split(bottom_layout[0]);
+
+    frame.render_widget(today_stats_widget, left_layout[0]);
+    frame.render_widget(lifetime_widget, left_layout[1]);
 
     let recent_rows: Vec<Row> = controller
         .todays_drinks

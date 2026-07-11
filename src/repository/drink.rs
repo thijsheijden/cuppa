@@ -304,6 +304,47 @@ impl DrinkRepository {
         Ok(records)
     }
 
+    pub fn get_lifetime_stats(&self) -> rusqlite::Result<LifetimeStats> {
+        let conn = open_db(db_path())?;
+        
+        let total_drinks: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM drinks",
+            [],
+            |row| row.get(0),
+        )?;
+        
+        let total_caffeine_mg: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(caffeine_mg), 0) FROM drinks",
+            [],
+            |row| row.get(0),
+        )?;
+        
+        let first_drink: Option<DateTime<Utc>> = conn.query_row(
+            "SELECT consumed_at FROM drinks ORDER BY consumed_at ASC LIMIT 1",
+            [],
+            |row| {
+                let s: String = row.get(0)?;
+                Ok(DateTime::parse_from_rfc3339(&s)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()))
+            }
+        ).ok();
+        
+        let days_tracking = first_drink.map(|first| {
+            let days = Utc::now().signed_duration_since(first).num_days();
+            days.max(1)
+        }).unwrap_or(1);
+        
+        let avg_per_day = total_caffeine_mg as f64 / days_tracking as f64;
+        
+        Ok(LifetimeStats {
+            total_drinks: total_drinks as i32,
+            total_caffeine_mg: total_caffeine_mg as i32,
+            days_tracking: days_tracking as i32,
+            avg_per_day,
+        })
+    }
+
     fn calculate_level_at(drinks: &[DrinkRecord], at: DateTime<Utc>) -> f64 {
         drinks.iter().map(|d| Self::decayed_amount(d.caffeine_mg as f64, d.consumed_at, at)).sum()
     }
@@ -326,4 +367,12 @@ pub struct DrinkRecord {
     pub drink_name: String,
     pub caffeine_mg: i32,
     pub consumed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LifetimeStats {
+    pub total_drinks: i32,
+    pub total_caffeine_mg: i32,
+    pub days_tracking: i32,
+    pub avg_per_day: f64,
 }

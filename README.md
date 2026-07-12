@@ -67,8 +67,8 @@ cuppa
 
 Cuppa can sync your drink log across devices using a Git repository:
 
-1. Open **Settings** (`g` + `s`)
-2. Set a **Sync Remote URL** (e.g. a private GitHub repo)
+1. Open **Settings** (`s`)
+2. Set a **Sync Remote URL** (e.g. a private GitHub or GitLab repo)
 3. Cuppa will automatically pull on startup and push your changes when you quit
 
 Sync works by recording drink operations (add / delete) as JSON log entries in a Git-backed directory, then replaying missing operations on each device. This means that if two instances run at the same time and sync to the same repository there will be conflicts. Cuppa is designed to have at most one instance running at once.
